@@ -1,0 +1,17 @@
+name: Feature Request
+description: Suggest a canvas tool, node capability, or UX improvement for SandboxWorkflow
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What workflow problem would this solve?
+      placeholder: "Describe what feels tedious or missing when building pipelines..."
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Suggested UX or Behavior
+      placeholder: "Describe how you expect it to work..."

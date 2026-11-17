@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Standalone verification suite for SandboxWorkflow v1.8.0:
+Standalone verification suite for SandboxWorkflow v1.8.1:
 - Bundle assembly parity (`scripts/bundle.py --check`) and clean HTML structure
 - `node --check`, duplicate-function check, layout check, and zero-leak offline security checks
 - `dist/workflows/manifest.json` and `examples/*.workflow.json` validation
 - Node VM behavioral audit: offline boot presets, `+ New Blank`, editable new-node ports,
-  external manifest loading, and offline `Sync Folder` workflow import
+  external manifest loading, offline `Sync Folder`, live canvas search, sequential file tracer,
+  GitHub feedback draft builder, and offline placeholder guard
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from scripts import bundle
 
-DIST_HTML = REPO_ROOT / "dist" / "SandboxWorkflow_v1.8.0.html"
+DIST_HTML = REPO_ROOT / "dist" / "SandboxWorkflow_v1.8.1.html"
 DIST_INDEX = REPO_ROOT / "dist" / "index.html"
 MANIFEST_PATH = REPO_ROOT / "dist" / "workflows" / "manifest.json"
 EXAMPLES_DIR = REPO_ROOT / "examples"
@@ -266,6 +267,39 @@ async function runAudit() {
   });
   const folderLoadedId = ctx.S.workflowId;
 
+  // 7. v1.8.1 Live Canvas Search, Slow Sequential File Tracer, GitHub Issue Builder & Offline Placeholder Guard
+  ctx.loadPresetTemplate('example');
+  const searchInput = elements['workflowSearchFilter'];
+  searchInput.value = 'Sealer';
+  const searchRes = ctx.onCanvasSearchInput();
+  const focusedHit = ctx.cycleCanvasSearchMatch(1);
+  ctx.clearCanvasSearch();
+  const afterClearSearch = ctx.onCanvasSearchInput();
+
+  ctx.selectItem('node', 'cat_blackbox');
+  ctx.setFlowTraceSpeed(0.5);
+  const traceStart = ctx.startSequentialFlowTrace({ paused: true });
+  ctx.stepSequentialFlowTrace();
+  const traceStateMidStep = ctx.getFlowTraceState();
+  let guardSteps = 0;
+  while (ctx.getFlowTraceState().active && guardSteps++ < 20) {
+    ctx.stepSequentialFlowTrace();
+  }
+  const traceStateAfterStep = ctx.getFlowTraceState();
+  const outputBucket = (ctx.S.fileContainers || []).find(b => b.id === 'fc_output');
+  const outputBucketReport = outputBucket ? (outputBucket.lastStepRunReport || '') : '';
+  const outputBucketFilesLen = outputBucket && Array.isArray(outputBucket.files) ? outputBucket.files.length : 0;
+  ctx.stopSequentialFlowTrace(true);
+
+  elements['ghFeedbackTitle'] = makeEl('ghFeedbackTitle', 'INPUT');
+  elements['ghFeedbackBody'] = makeEl('ghFeedbackBody', 'TEXTAREA');
+  elements['ghFeedbackTitle'].value = 'Search focus jumps nicely';
+  elements['ghFeedbackBody'].value = 'Testing GitHub draft helper';
+  ctx.setGithubFeedbackKind('feature');
+  const ghDraft = ctx.buildGithubIssuePayload();
+
+  const offlineGuardRes = await ctx.openLocalPath('./assets/summary_report.csv', 'app', null, 'fc_output');
+
   console.log(JSON.stringify({
     bootId,
     bootBadge,
@@ -291,7 +325,16 @@ async function runAudit() {
     pickerOpened,
     folderClickCount,
     folderRes,
-    folderLoadedId
+    folderLoadedId,
+    searchMatchCount: searchRes.matches.length,
+    focusedHitId: focusedHit ? focusedHit.id : '',
+    afterClearSearchCount: afterClearSearch.matches.length,
+    traceStart,
+    traceStateAfterStep,
+    outputBucketReport,
+    outputBucketFilesLen,
+    ghDraft,
+    offlineGuardRes
   }));
 }
 
@@ -327,7 +370,7 @@ class _DivBalanceParser(HTMLParser):
 
 
 class TestSandboxWorkflowStandalone(unittest.TestCase):
-    """Verify SandboxWorkflow v1.8.0 bundle integrity, manifests, and Node VM behavior."""
+    """Verify SandboxWorkflow v1.8.1 bundle integrity, manifests, and Node VM behavior."""
 
     def test_1_bundle_parity_gates_and_node_syntax(self) -> None:
         html_doc, out_path = bundle.build_bundle(write=False, repo_root=REPO_ROOT)
@@ -337,9 +380,12 @@ class TestSandboxWorkflowStandalone(unittest.TestCase):
         self.assertEqual(DIST_HTML.read_text(encoding="utf-8"), html_doc)
         self.assertEqual(DIST_INDEX.read_text(encoding="utf-8"), html_doc)
 
-        self.assertIn("<title>Sandbox workflow tool — v1.8.0</title>", html_doc)
+        self.assertIn("<title>Sandbox workflow tool — v1.8.1</title>", html_doc)
         self.assertIn(">Sandbox workflow tool</span>", html_doc)
         self.assertIn('id="newBlankWorkflowBtn"', html_doc)
+        self.assertIn('id="btnGithubFeedback"', html_doc)
+        self.assertIn('id="flowTraceSpeedSelect"', html_doc)
+        self.assertNotIn('id="loadDemoBtn"', html_doc)
         self.assertIn('id="offline-transport-stub"', html_doc)
         self.assertEqual(html_doc.count("</body>"), 1)
         self.assertEqual(html_doc.count("<body>"), 1)
@@ -356,7 +402,7 @@ class TestSandboxWorkflowStandalone(unittest.TestCase):
     def test_2_manifest_and_examples_valid_and_synced(self) -> None:
         self.assertTrue(MANIFEST_PATH.is_file(), f"Missing {MANIFEST_PATH}")
         manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
-        self.assertEqual(manifest.get("version"), "1.8.0")
+        self.assertEqual(manifest.get("version"), "1.8.1")
         entries = manifest.get("workflows")
         self.assertIsInstance(entries, list)
         self.assertGreaterEqual(len(entries), 2)
@@ -401,7 +447,7 @@ class TestSandboxWorkflowStandalone(unittest.TestCase):
 
         # Offline boot state
         self.assertEqual(out["bootId"], "example")
-        self.assertEqual(out["bootBadge"], "v1.8.0")
+        self.assertEqual(out["bootBadge"], "v1.8.1")
         self.assertEqual(out["bootPresetOptions"], ["example", "hello_world", "algorithm", "blank"])
         self.assertEqual(out["bootPresetKeys"], ["example", "hello_world", "algorithm"])
         self.assertIn('class="wf-node ', out["bootDomHtml"])
@@ -462,6 +508,22 @@ class TestSandboxWorkflowStandalone(unittest.TestCase):
         self.assertTrue(out["folderRes"]["ok"])
         self.assertEqual(out["folderRes"]["keys"], ["local_folder_flow"])
         self.assertEqual(out["folderLoadedId"], "local_folder_flow")
+
+        # v1.8.1 UX upgrades
+        self.assertGreaterEqual(out["searchMatchCount"], 1)
+        self.assertEqual(out["focusedHitId"], "n_sealer")
+        self.assertEqual(out["afterClearSearchCount"], 0)
+        self.assertTrue(out["traceStart"]["ok"])
+        self.assertEqual(out["traceStart"]["speed"], 0.5)
+        self.assertGreaterEqual(out["traceStart"]["hopsCount"], 1)
+        self.assertGreaterEqual(out["outputBucketFilesLen"], 4)
+        self.assertTrue(
+            ("Generated" in out["outputBucketReport"]) or ("Updated" in out["outputBucketReport"]),
+            f"Expected sequential tracer bucket report, got: {out['outputBucketReport']!r}",
+        )
+        self.assertTrue(out["ghDraft"]["url"].startswith("https://github.com/pzetts/SandboxWorkflow/issues/new"))
+        self.assertIn("labels=enhancement", out["ghDraft"]["url"])
+        self.assertEqual(out["offlineGuardRes"], {"ok": False, "placeholder": True, "path": "./assets/summary_report.csv"})
 
 
 if __name__ == "__main__":

@@ -1,20 +1,22 @@
 <body>
 <header class="topbar">
-  <div class="brand" title="Sandbox workflow tool — v1.8.0">
+  <div class="brand" title="Sandbox workflow tool — v1.8.1">
     <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#dbbc7f" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
     <span style="font-weight:700;font-size:12.5px;white-space:nowrap;">Sandbox workflow tool</span>
-    <span class="badge" id="modeBadge" title="Offline Standalone Visual Workflow Studio">v1.8.0</span>
-    <span class="badge" id="engineVersionBadge" style="display:none;">Engine: SandboxWorkflow v1.8.0</span>
+    <span class="badge" id="modeBadge" title="Offline Standalone Visual Workflow Studio">v1.8.1</span>
+    <span class="badge" id="engineVersionBadge" style="display:none;">Engine: SandboxWorkflow v1.8.1</span>
   </div>
 
   <div class="top-controls">
-    <div class="tb-group tb-group-primary" title="Workflow Selection, Filter &amp; Lifecycle Mode">
+    <div class="tb-group tb-group-primary" title="Workflow Selection, Live Canvas Search &amp; Lifecycle Mode">
       <select id="workflowStatusFilter" onchange="filterWorkflowDropdown()" title="Filter workflows by Active vs. Under Construction status" style="padding:2px 5px;font-size:10.5px;max-width:80px;">
         <option value="all">All</option>
         <option value="active">🟢 Active</option>
         <option value="construction">🚧 Editing</option>
       </select>
-      <input type="text" id="workflowSearchFilter" oninput="filterWorkflowDropdown()" placeholder="🔎" title="Filter workflow dropdown list by keyword" style="width:52px;padding:2px 5px;font-size:10.5px;">
+      <input type="text" id="workflowSearchFilter" oninput="onCanvasSearchInput()" onkeydown="handleCanvasSearchKeydown(event)" placeholder="🔎 Search nodes, files, notes..." title="Search nodes, containers, files, sticky notes &amp; workflow list (Enter = next match, Esc = clear)">
+      <button type="button" id="canvasSearchMatchBtn" class="tb-svg-btn" style="display:none;" onclick="cycleCanvasSearchMatch(1)" title="Jump to next canvas search match [Enter]">0/0 ▾</button>
+      <button type="button" id="btnClearCanvasSearch" class="tb-svg-btn" style="display:none;padding:1px 5px;" onclick="clearCanvasSearch()" title="Clear Search [Esc]">✕</button>
       <select id="presetSelect" aria-label="Select workflow" onchange="loadPresetTemplate(this.value)" title="Select Active or Under-Construction Workflow">
         <option value="example" selected>🧪 Example Workflow (Order &amp; Packaging Pipeline)</option>
         <option value="hello_world" data-wf-status="construction">👋 Hello World (Minimal 2-Node Starter)</option>
@@ -59,10 +61,6 @@
         <svg aria-hidden="true" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
         <span class="btn-lbl">Snap</span>
       </button>
-      <button type="button" id="loadDemoBtn" class="tb-svg-btn" onclick="loadPresetTemplate('example')" title="🧪 Load Example Workflow Demo (All Elements &amp; Connectors)">
-        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.31"></path><path d="M14 9.3V1.99"></path><path d="M8.5 2h7"></path><path d="M14 9.3a6.5 6.5 0 1 1-4 0"></path></svg>
-        <span class="btn-lbl">Demo</span>
-      </button>
     </div>
 
     <div class="tb-group" title="Workflow Lifecycle: Clone, Construction Edit, Go Live &amp; Revert">
@@ -82,10 +80,23 @@
       </button>
     </div>
 
-    <div class="tb-group" title="Execution, Collapsible Lists, Wire Routing &amp; Viewport Controls">
-      <button id="btnRunFlowPulse" class="btn-primary tb-svg-btn" onclick="simulateFlowPulse()" title="▶ Simulate / Run Flow Pulse across pipeline wires">
+    <div class="tb-group" title="Step-by-Step File Tracer, Collapsible Lists, Wire Routing &amp; Viewport Controls">
+      <button id="btnRunFlowPulse" type="button" class="btn-primary tb-svg-btn" onclick="toggleSequentialFlowTrace()" title="▶ Play / ⏸ Pause — Slowly trace selected file/node through downstream nodes, processing, and output File Containers">
         <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+        <span class="btn-lbl">Trace</span>
       </button>
+      <button id="btnStepFlowTrace" type="button" class="tb-svg-btn" onclick="stepSequentialFlowTrace()" title="⏭ Step 1 Hop Forward along the selected pipeline flow">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4" fill="currentColor"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>
+      </button>
+      <button id="btnStopFlowTrace" type="button" class="tb-svg-btn" onclick="stopSequentialFlowTrace()" style="display:none;border-color:var(--red);color:#fecdd3;" title="⏹ Stop Tracer &amp; Clear Trace Highlight">
+        <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"></rect></svg>
+      </button>
+      <select id="flowTraceSpeedSelect" aria-label="Flow trace playback speed" onchange="setFlowTraceSpeed(this.value)" title="Adjust sequential file tracer playback speed" style="max-width:74px;padding:2px 4px;font-size:10.5px;">
+        <option value="0.25">🔍 0.25x</option>
+        <option value="0.5">🐢 0.5x</option>
+        <option value="1" selected>🚶 1x</option>
+        <option value="2">⚡ 2x</option>
+      </select>
       <button id="btnToggleAllLongLists" class="tb-svg-btn" onclick="toggleAllLongListsCollapse()" title="↕ Collapse / Expand All Long Lists, Rules, Sub-Steps &amp; File Containers (Auto-Fits Containers to Fit)">
         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 15 5 5 5-5"></path><path d="m7 9 5-5 5 5"></path></svg>
         <span class="btn-lbl">Lists ▾</span>
@@ -168,6 +179,10 @@
       <button type="button" id="btnTopbarSchematic" class="tb-svg-btn" onclick="openPrintableSchematicSvgSheet()" style="background:rgba(2,132,199,0.24);border-color:#38bdf8;color:#e0f2fe;font-weight:700;" title="📐 Schematic View — Export 1-Page White-Canvas Printable Electrical Schematic SVG">
         <svg aria-hidden="true" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"></polygon><line x1="9" y1="3" x2="9" y2="18"></line><line x1="15" y1="6" x2="15" y2="21"></line></svg>
       </button>
+      <button id="btnGithubFeedback" type="button" class="tb-svg-btn" onclick="toggleGithubFeedbackPopover(event)" title="Report a Bug or Request a Feature on GitHub (Opens clean issue form — zero workflow data attached)" aria-label="Report a Bug or Request a Feature">
+        <svg aria-hidden="true" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2l1.88 1.88"></path><path d="M14.12 3.88L16 2"></path><path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1"></path><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6"></path><path d="M12 20v-9"></path><path d="M6.53 9C4.6 8.8 3 7.1 3 5"></path><path d="M6 13H2"></path><path d="M3 21c0-2.1 1.7-3.9 3.8-4"></path><path d="M20.97 5c0 2.1-1.6 3.8-3.5 4"></path><path d="M22 13h-4"></path><path d="M17.2 17c2.1.1 3.8 1.9 3.8 4"></path></svg>
+        <span class="btn-lbl">Feedback</span>
+      </button>
       <button id="btnHotkeyHelp" onclick="toggleHotkeyHelpPopover(event)" title="Canvas Hotkeys &amp; Mouse Controls [?]" aria-label="Canvas Hotkeys &amp; Mouse Controls">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="9.5"></circle>
@@ -181,7 +196,7 @@
 
 <div class="hotkey-help-popover" id="hotkeyHelpPopover" role="dialog" aria-label="Canvas Hotkeys & Mouse Controls">
   <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:2px;">
-    <strong style="color:var(--aqua);font-size:12px;">⌨️ Canvas Hotkeys &amp; Mouse Controls (Sandbox workflow tool v1.8.0)</strong>
+    <strong style="color:var(--aqua);font-size:12px;">⌨️ Canvas Hotkeys &amp; Mouse Controls (Sandbox workflow tool v1.8.1)</strong>
     <button class="hdr-mini-btn" onclick="toggleHotkeyHelpPopover(event, false)" title="Close Hotkeys Help [Esc]">✕</button>
   </div>
   <div class="hotkey-row"><span class="hotkey-kbd">🔍 Alt + Left-Click</span><span>Zoom In (+25% at cursor)</span></div>
@@ -197,6 +212,32 @@
   <div class="hotkey-row"><span class="hotkey-kbd">◀ ◀ Hide Palette</span><span>Toggle Left Sidebar</span></div>
   <div class="hotkey-row"><span class="hotkey-kbd">⛶ ⛶ Full Screen</span><span>Hide Both Sidebars</span></div>
   <div class="hotkey-row"><span class="hotkey-kbd">🗑️ Delete / Backspace</span><span>Delete Selected Element</span></div>
+</div>
+
+<div class="github-feedback-popover" id="githubFeedbackPopover" role="dialog" aria-label="Report a Bug or Request a Feature on GitHub">
+  <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);padding-bottom:6px;">
+    <strong style="color:var(--accent);font-size:12px;">🐛 Bug Report / 💡 Feature Request</strong>
+    <button type="button" class="hdr-mini-btn" onclick="toggleGithubFeedbackPopover(event, false)" title="Close [Esc]">✕</button>
+  </div>
+  <div class="gh-kind-row">
+    <button type="button" id="btnGhKindBug" class="gh-kind-btn active" onclick="setGithubFeedbackKind('bug')">🐛 Bug Report</button>
+    <button type="button" id="btnGhKindFeat" class="gh-kind-btn" onclick="setGithubFeedbackKind('feature')">💡 Feature Request</button>
+  </div>
+  <div>
+    <label for="ghFeedbackTitle" style="display:block;font-size:10.5px;color:var(--fg1);margin-bottom:3px;">Short Summary Title</label>
+    <input type="text" id="ghFeedbackTitle" style="width:100%;" placeholder="e.g. Sequential tracer skips bus bar outputs">
+  </div>
+  <div>
+    <label for="ghFeedbackBody" style="display:block;font-size:10.5px;color:var(--fg1);margin-bottom:3px;">Details / Steps / Suggestion</label>
+    <textarea id="ghFeedbackBody" rows="4" style="width:100%;resize:vertical;" placeholder="What happened or what would help your workflow?"></textarea>
+  </div>
+  <div style="font-size:10px;color:#a7f3d0;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.35);border-radius:6px;padding:5px 7px;">
+    🔒 Privacy-safe: Only the notes above and engine version (<code>v1.8.1</code>) are pre-filled. Your local workflows and file paths are never attached.
+  </div>
+  <div style="display:flex;justify-content:flex-end;gap:6px;">
+    <button type="button" id="btnCopyGhFeedbackMd" onclick="copyGithubFeedbackMarkdown()" style="font-size:11px;padding:5px 9px;">📋 Copy Text</button>
+    <button type="button" id="btnOpenGhFeedback" class="btn-primary" onclick="openGithubFeedbackIssue()" style="font-size:11px;padding:5px 11px;">Open GitHub Issue ↗</button>
+  </div>
 </div>
 
 <div class="main-layout workspace">
@@ -267,7 +308,7 @@
       <span class="caution-active-label">Caution, active workflow</span>
     </div>
     <div class="empty-hint" id="canvasHint">
-      ✨ Blank Visual Workflow Canvas — Click any left-palette block, click 🧪 Load Demo Workflow, or Right-Click anywhere to spawn elements!
+      ✨ Blank Visual Workflow Canvas — Click any left-palette block, choose a workflow from the dropdown, or Right-Click anywhere to spawn elements!
     </div>
     <div id="world-layer">
       <svg id="wire-svg"></svg>

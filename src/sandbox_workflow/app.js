@@ -74,7 +74,9 @@ function isOfflineStandaloneMode() {
 
 function syncOfflineModeUI() {
   const badge = document.getElementById('modeBadge');
-  if (badge) badge.textContent = 'v1.8.0';
+  if (badge) badge.textContent = 'v1.8.1';
+  const engBadge = document.getElementById('engineVersionBadge');
+  if (engBadge) engBadge.textContent = 'Engine: SandboxWorkflow v1.8.1';
 }
 
 function loadStoredCustomTemplates() {
@@ -512,6 +514,32 @@ let portDragStartPos = null;
 let ctxMenuWorldPos = { x: 180, y: 140 };
 let pulseProgress = 0;
 let pulseTimer = null;
+let canvasSearchState = {
+  query: '',
+  matches: [],
+  matchIdSet: new Set(),
+  activeIdx: -1,
+  activeId: ''
+};
+let flowTracerState = {
+  active: false,
+  paused: false,
+  speed: 1.0,
+  hops: [],
+  hopIndex: 0,
+  phase: 'idle',
+  phaseProgress: 0,
+  completedWireIds: new Set(),
+  completedNodeIds: new Set(),
+  activeWireId: '',
+  activeNodeId: '',
+  receivingNodeId: '',
+  activeFileLabel: '',
+  activeOutputLabel: '',
+  updatedBucketMap: {},
+  timerId: null
+};
+let githubFeedbackKind = 'bug';
 let isCtrlKeyHeld = false;
 let isAltKeyHeld = false;
 let isShiftKeyHeld = false;
@@ -639,15 +667,191 @@ function filterWorkflowDropdown() {
   const searchFilterEl = document.getElementById('workflowSearchFilter');
   const statusFilter = (statusFilterEl && statusFilterEl.value) ? statusFilterEl.value : 'all';
   const query = ((searchFilterEl && searchFilterEl.value) ? searchFilterEl.value : '').trim().toLowerCase();
-  Array.from(sel.options).forEach(opt => {
+  const opts = Array.from(sel.options);
+  const hasPresetTextHit = !query || opts.some(opt =>
+    opt && opt.getAttribute && (
+      (opt.textContent || '').toLowerCase().includes(query) ||
+      (opt.value || '').toLowerCase().includes(query)
+    )
+  );
+  opts.forEach(opt => {
     if (!opt || !opt.getAttribute) return;
     const optStatus = opt.getAttribute('data-wf-status') || (opt.value === 'blank' ? 'construction' : 'active');
-    const textMatch = !query || (opt.textContent || '').toLowerCase().includes(query) || (opt.value || '').toLowerCase().includes(query);
+    const textMatch = !query || !hasPresetTextHit || (opt.textContent || '').toLowerCase().includes(query) || (opt.value || '').toLowerCase().includes(query);
     const statusMatch = statusFilter === 'all' || optStatus === statusFilter;
     opt.hidden = !(textMatch && statusMatch);
     if (opt.style) opt.style.display = (textMatch && statusMatch) ? '' : 'none';
   });
 }
+
+function collectCanvasSearchMatches(rawQuery) {
+  const q = String(rawQuery || '').trim().toLowerCase();
+  if (!q || !S) return [];
+  const candidates = [];
+  const pushAll = (arr, kind) => {
+    (arr || []).forEach(it => {
+      if (it && it.id) candidates.push({ kind, item: it });
+    });
+  };
+  pushAll(S.categories, 'category');
+  pushAll(S.subcategories, 'subcategory');
+  pushAll(S.cells, 'cell');
+  pushAll(S.nodes, 'node');
+  pushAll(S.fileContainers, 'bucket');
+  pushAll(S.buses, 'bus');
+  pushAll(S.stickyNotes, 'sticky');
+
+  const hits = [];
+  candidates.forEach(({ kind, item }) => {
+    const parts = [
+      item.id,
+      item.title,
+      item.category,
+      item.scriptBinding,
+      item.text,
+      item.pattern,
+      item.filter,
+      item.folderPath,
+      item.inputSpec,
+      item.outputSpec,
+      ...(Array.isArray(item.notes) ? item.notes : []),
+      ...(Array.isArray(item.rules) ? item.rules : []),
+      ...(Array.isArray(item.steps) ? item.steps : []),
+      ...(Array.isArray(item.substeps) ? item.substeps : []),
+      ...(Array.isArray(item.files) ? item.files.map(f => (typeof f === 'object' && f ? (f.name || f.label || f.path || '') : String(f || ''))) : []),
+      ...(Array.isArray(item.todos) ? item.todos.map(t => (t && t.text) || '') : [])
+    ];
+    const haystack = parts.filter(Boolean).join(' ').toLowerCase();
+    if (haystack.includes(q)) {
+      hits.push({
+        kind,
+        id: item.id,
+        label: item.title || item.id,
+        x: Number(item.x) || 0,
+        y: Number(item.y) || 0,
+        w: Number(item.w) || 260,
+        h: Number(item.h) || 200
+      });
+    }
+  });
+  return hits;
+}
+
+function updateCanvasSearchUI() {
+  const q = String(canvasSearchState.query || '').trim();
+  const countBtn = document.getElementById('canvasSearchMatchBtn');
+  const clearBtn = document.getElementById('btnClearCanvasSearch');
+  const total = canvasSearchState.matches.length;
+  if (countBtn) {
+    if (!q) {
+      countBtn.style.display = 'none';
+    } else {
+      countBtn.style.display = 'inline-flex';
+      const curNum = total > 0 && canvasSearchState.activeIdx >= 0 ? (canvasSearchState.activeIdx + 1) : 0;
+      countBtn.textContent = `${curNum}/${total} ▾`;
+      if (countBtn.style) {
+        countBtn.style.borderColor = total > 0 ? '#38bdf8' : '#e67e80';
+        countBtn.style.color = total > 0 ? '#bae6fd' : '#fecdd3';
+      }
+    }
+  }
+  if (clearBtn) {
+    clearBtn.style.display = q ? 'inline-flex' : 'none';
+  }
+}
+
+function panViewportToItemRect(hit) {
+  if (!hit || !S) return;
+  const vw = (viewport && viewport.clientWidth > 100) ? viewport.clientWidth : 1100;
+  const vh = (viewport && viewport.clientHeight > 100) ? viewport.clientHeight : 720;
+  const targetZoom = Math.max(0.65, Math.min(1.15, Number(S.zoom) || 1.0));
+  S.zoom = +targetZoom.toFixed(2);
+  const cx = hit.x + (hit.w || 260) / 2;
+  const cy = hit.y + (hit.h || 200) / 2;
+  S.panX = Math.round(vw / 2 - cx * S.zoom);
+  S.panY = Math.round(vh / 2 - cy * S.zoom);
+  applyWorldTransform();
+}
+
+function focusCanvasSearchMatch(idx) {
+  const total = canvasSearchState.matches.length;
+  if (!total) {
+    canvasSearchState.activeIdx = -1;
+    canvasSearchState.activeId = '';
+    updateCanvasSearchUI();
+    syncSelectedDomClasses();
+    return null;
+  }
+  const wrapped = ((idx % total) + total) % total;
+  const hit = canvasSearchState.matches[wrapped];
+  canvasSearchState.activeIdx = wrapped;
+  canvasSearchState.activeId = hit.id;
+  panViewportToItemRect(hit);
+  syncSelectedDomClasses();
+  updateCanvasSearchUI();
+  setStatus(`🔎 Search match ${wrapped + 1}/${total}: ${hit.label}`);
+  return hit;
+}
+window.focusCanvasSearchMatch = focusCanvasSearchMatch;
+
+function cycleCanvasSearchMatch(dir = 1) {
+  if (!canvasSearchState.matches.length) {
+    onCanvasSearchInput();
+    if (!canvasSearchState.matches.length) return null;
+  }
+  const nextIdx = canvasSearchState.activeIdx < 0 ? 0 : (canvasSearchState.activeIdx + (dir >= 0 ? 1 : -1));
+  return focusCanvasSearchMatch(nextIdx);
+}
+window.cycleCanvasSearchMatch = cycleCanvasSearchMatch;
+
+function onCanvasSearchInput() {
+  filterWorkflowDropdown();
+  const searchEl = document.getElementById('workflowSearchFilter');
+  const rawQuery = searchEl ? String(searchEl.value || '') : '';
+  const trimmed = rawQuery.trim();
+  canvasSearchState.query = rawQuery;
+  canvasSearchState.matches = collectCanvasSearchMatches(trimmed);
+  canvasSearchState.matchIdSet = new Set(canvasSearchState.matches.map(m => m.id));
+  if (canvasSearchState.matches.length > 0) {
+    canvasSearchState.activeIdx = 0;
+    canvasSearchState.activeId = canvasSearchState.matches[0].id;
+    setStatus(`🔎 Found ${canvasSearchState.matches.length} matching canvas item(s) for "${trimmed}" (Enter to focus)`);
+  } else {
+    canvasSearchState.activeIdx = -1;
+    canvasSearchState.activeId = '';
+    if (trimmed) {
+      setStatus(`🔎 No canvas elements matched "${trimmed}"`);
+    }
+  }
+  updateCanvasSearchUI();
+  syncSelectedDomClasses();
+  return canvasSearchState;
+}
+window.onCanvasSearchInput = onCanvasSearchInput;
+
+function clearCanvasSearch() {
+  const searchEl = document.getElementById('workflowSearchFilter');
+  if (searchEl) searchEl.value = '';
+  canvasSearchState = { query: '', matches: [], matchIdSet: new Set(), activeIdx: -1, activeId: '' };
+  filterWorkflowDropdown();
+  updateCanvasSearchUI();
+  syncSelectedDomClasses();
+  setStatus('🔎 Search cleared');
+}
+window.clearCanvasSearch = clearCanvasSearch;
+
+function handleCanvasSearchKeydown(ev) {
+  if (!ev) return;
+  if (ev.key === 'Enter') {
+    if (ev.preventDefault) ev.preventDefault();
+    cycleCanvasSearchMatch(ev.shiftKey ? -1 : 1);
+  } else if (ev.key === 'Escape') {
+    if (ev.preventDefault) ev.preventDefault();
+    clearCanvasSearch();
+    if (ev.target && typeof ev.target.blur === 'function') ev.target.blur();
+  }
+}
+window.handleCanvasSearchKeydown = handleCanvasSearchKeydown;
 
 function syncWorkflowStatusUI() {
   if (!S) return;
@@ -655,7 +859,7 @@ function syncWorkflowStatusUI() {
   const isSandbox = S.workflowStatus === 'sandbox';
   const isEditable = isConstruction || isSandbox;
   const modeBadgeEl = document.getElementById('modeBadge');
-  if (modeBadgeEl) modeBadgeEl.textContent = 'v1.8.0';
+  if (modeBadgeEl) modeBadgeEl.textContent = 'v1.8.1';
   if (viewport && viewport.classList && viewport.classList.toggle) {
     viewport.classList.toggle('workflow-construction', isConstruction);
     viewport.classList.toggle('workflow-active', !isEditable);
@@ -1243,6 +1447,7 @@ function fitView() {
 window.fitView = fitView;
 
 function createNewBlankWorkflow() {
+  if (typeof stopSequentialFlowTrace === 'function') stopSequentialFlowTrace(true);
   if (typeof invalidateWireRouteCache === 'function') invalidateWireRouteCache();
   if (typeof resetInteractionModes === 'function') resetInteractionModes();
   const savedTemplates = (S && S.customNodeTemplates) ? S.customNodeTemplates.slice() : loadStoredCustomTemplates();
@@ -4127,31 +4332,80 @@ function renderWires() {
     `</g>`
   ];
 
+  const getPointAlongPolyline = (ptsList, tRaw) => {
+    const arr = Array.isArray(ptsList) && ptsList.length >= 2 ? ptsList : [{ x: 0, y: 0 }];
+    if (arr.length === 1) return arr[0];
+    const t = Math.max(0, Math.min(1, Number(tRaw) || 0));
+    const segLens = [];
+    let totalLen = 0;
+    for (let i = 0; i < arr.length - 1; i++) {
+      const dx = arr[i + 1].x - arr[i].x;
+      const dy = arr[i + 1].y - arr[i].y;
+      const len = Math.hypot(dx, dy);
+      segLens.push(len);
+      totalLen += len;
+    }
+    if (totalLen <= 0.001) return arr[0];
+    let dist = totalLen * t;
+    for (let i = 0; i < segLens.length; i++) {
+      if (dist <= segLens[i] || i === segLens.length - 1) {
+        const frac = segLens[i] > 0.001 ? (dist / segLens[i]) : 0;
+        return {
+          x: arr[i].x + (arr[i + 1].x - arr[i].x) * frac,
+          y: arr[i].y + (arr[i + 1].y - arr[i].y) * frac
+        };
+      }
+      dist -= segLens[i];
+    }
+    return arr[arr.length - 1];
+  };
+
   const defaultColor = style === 'subway_pulse' ? '#dbbc7f' : (style === 'ortho_pulse' ? '#a7c080' : '#7fbbb3');
+  const tracerActive = Boolean(flowTracerState && flowTracerState.active);
   const renderWireEntry = (entry, isGlowLayer) => {
-    const { w, p1, p2, d, wpAttr } = entry;
+    const { w, p1, p2, d, wpAttr, pts } = entry;
     const customWireHex = normalizeHexColor(w && w.color);
     const isSelectedWire = Boolean(selectedItem && selectedItem.kind === 'wire' && selectedItem.id === w.id);
+    const isTraceActiveWire = Boolean(tracerActive && flowTracerState.activeWireId === w.id && (flowTracerState.phase === 'transit_in' || flowTracerState.phase === 'emit_out'));
+    const isTraceDoneWire = Boolean(tracerActive && flowTracerState.completedWireIds && flowTracerState.completedWireIds.has(w.id));
     const pulseCls = (isFlowPulsing && (!pathway.active || Boolean(pulseTimer))) ? ' wire-pulsing-flow' : '';
+    const traceCls = isTraceActiveWire ? ' trace-active-wire' : (isTraceDoneWire ? ' trace-completed-wire' : '');
     const wireStateCls = isSelectedWire
       ? 'wire-selected'
-      : (pathway.active ? (isGlowLayer ? 'wire-pathway-glow' : 'wire-pathway-dim') : '');
-    const wireCls = 'wire-path' + (wireStateCls ? ' ' + wireStateCls : '') + pulseCls;
-    const baseStroke = customWireHex || (isSelectedWire ? defaultColor : (isGlowLayer ? '#38bdf8' : defaultColor));
-    const baseWidth = (isGlowLayer || isSelectedWire) ? '3' : '2.4';
-    const pinCls = (pathway.active && !isGlowLayer && !isSelectedWire) ? 'wire-pathway-dim' : ((isGlowLayer || isSelectedWire) ? 'wire-port-pin-glow' : '');
+      : (pathway.active && !isTraceActiveWire && !isTraceDoneWire ? (isGlowLayer ? 'wire-pathway-glow' : 'wire-pathway-dim') : '');
+    const wireCls = 'wire-path' + (wireStateCls ? ' ' + wireStateCls : '') + traceCls + pulseCls;
+    const baseStroke = isTraceActiveWire
+      ? '#facc15'
+      : (isTraceDoneWire ? '#34d399' : (customWireHex || (isSelectedWire ? defaultColor : (isGlowLayer ? '#38bdf8' : defaultColor))));
+    const baseWidth = isTraceActiveWire ? '3.6' : ((isGlowLayer || isSelectedWire || isTraceDoneWire) ? '3' : '2.4');
+    const pinCls = (pathway.active && !isGlowLayer && !isSelectedWire && !isTraceActiveWire) ? 'wire-pathway-dim' : ((isGlowLayer || isSelectedWire || isTraceActiveWire) ? 'wire-port-pin-glow' : '');
     svgParts.push(`<path class="wire-hit" data-wire-id="${w.id}" d="${d}" stroke="transparent" stroke-width="14" fill="none" onclick="handleWireHitClick(event, '${w.id}')" />`);
-    if (isSelectedWire) {
+    if (isTraceActiveWire) {
+      svgParts.push(`<path class="trace-active-wire-halo" data-wire-id="${w.id}" d="${d}" stroke="#facc15" stroke-width="9" opacity="0.28" fill="none" />`);
+    } else if (isSelectedWire) {
       svgParts.push(`<path class="wire-selected-halo" data-wire-id="${w.id}" d="${d}" stroke="#facc15" stroke-width="8" opacity="0.44" fill="none" />`);
     } else if (isGlowLayer) {
       svgParts.push(`<path class="wire-pathway-halo" data-wire-id="${w.id}" d="${d}" stroke="#38bdf8" stroke-width="7" opacity="0.28" fill="none" />`);
     } else {
-      svgParts.push(`<path class="${(pathway.active ? 'wire-pathway-dim' : '') + pulseCls}" d="${d}" stroke="#111518" stroke-width="5.2" fill="none" opacity="0.72" />`);
+      svgParts.push(`<path class="${(pathway.active && !isTraceDoneWire ? 'wire-pathway-dim' : '') + pulseCls}" d="${d}" stroke="#111518" stroke-width="5.2" fill="none" opacity="0.72" />`);
     }
     svgParts.push(`<path class="${wireCls.trim()}" data-wire-id="${w.id}" data-waypoints="${wpAttr}" d="${d}" stroke="${baseStroke}" stroke-width="${baseWidth}" fill="none" />`);
-    svgParts.push(`<circle class="${pinCls}" cx="${p1.x}" cy="${p1.y}" r="${isGlowLayer ? 5 : 4}" fill="#a7c080" stroke="#111518" stroke-width="1.2" />`);
-    svgParts.push(`<circle class="${pinCls}" cx="${p2.x}" cy="${p2.y}" r="${isGlowLayer ? 5 : 4}" fill="#dbbc7f" stroke="#111518" stroke-width="1.2" />`);
-    if (pulseTimer) {
+    svgParts.push(`<circle class="${pinCls}" cx="${p1.x}" cy="${p1.y}" r="${(isGlowLayer || isTraceActiveWire) ? 5 : 4}" fill="#a7c080" stroke="#111518" stroke-width="1.2" />`);
+    svgParts.push(`<circle class="${pinCls}" cx="${p2.x}" cy="${p2.y}" r="${(isGlowLayer || isTraceActiveWire) ? 5 : 4}" fill="#dbbc7f" stroke="#111518" stroke-width="1.2" />`);
+    if (isTraceActiveWire) {
+      const tokenPt = getPointAlongPolyline(pts && pts.length >= 2 ? pts : [p1, p2], flowTracerState.phaseProgress);
+      const fileTxt = String(flowTracerState.activeFileLabel || 'payload.json').slice(0, 26);
+      const escLbl = escSvgXml('📄 ' + fileTxt);
+      const pillW = Math.max(76, Math.round(fileTxt.length * 6.4 + 28));
+      const rx = Math.round(tokenPt.x - pillW / 2);
+      const ry = Math.round(tokenPt.y - 12);
+      svgParts.push(
+        `<g class="trace-token-pill" pointer-events="none">` +
+        `<rect x="${rx}" y="${ry}" width="${pillW}" height="22" rx="11" fill="#141a20" stroke="#facc15" stroke-width="2" />` +
+        `<text x="${Math.round(tokenPt.x)}" y="${Math.round(tokenPt.y + 3)}" text-anchor="middle" fill="#fef08a" font-family="Consolas, monospace" font-size="10" font-weight="700">${escLbl}</text>` +
+        `</g>`
+      );
+    } else if (pulseTimer) {
       const px = p1.x + (p2.x - p1.x) * pulseProgress;
       const py = p1.y + (p2.y - p1.y) * pulseProgress;
       svgParts.push(`<circle cx="${px}" cy="${py}" r="6" fill="#ece6d8" stroke="#a7c080" stroke-width="2" />`);
@@ -4285,9 +4539,28 @@ function renderPortDot(itemId, portName, dir) {
   return `<span class="${cls}" data-node="${itemId}" data-port="${portName}" data-dir="${dir}" data-conn-count="${connCount}"${sizeStyle} title="Click-then-Click or Drag wire (${portName})" onmousedown="onPortMouseDown(event,'${itemId}','${portName}','${dir}')" onmouseup="finishPortConnect(event,'${itemId}','${portName}','${dir}')" onclick="onPortClick(event,'${itemId}','${portName}','${dir}')"></span>`;
 }
 
+function getItemOverlayStateClasses(itemId) {
+  const cls = [];
+  if (canvasSearchState && canvasSearchState.matchIdSet && canvasSearchState.matchIdSet.has(itemId)) {
+    cls.push('search-match-highlight');
+    if (canvasSearchState.activeId === itemId) cls.push('search-match-active');
+  }
+  if (flowTracerState && flowTracerState.active) {
+    if (flowTracerState.activeNodeId === itemId && flowTracerState.phase === 'processing') {
+      cls.push('trace-node-processing');
+    } else if (flowTracerState.receivingNodeId === itemId && (flowTracerState.phase === 'transit_in' || flowTracerState.phase === 'emit_out')) {
+      cls.push('trace-receiving');
+    } else if (flowTracerState.completedNodeIds && flowTracerState.completedNodeIds.has(itemId)) {
+      cls.push('trace-node-done');
+    }
+  }
+  return cls.join(' ');
+}
+
 function renderContainerBox(cont, kind, boxCls, hdrCls, icon) {
   if (findCollapsedParentContainer(cont)) return '';
   const sel = selectedItem && selectedItem.id === cont.id ? 'selected' : '';
+  const overlayCls = getItemOverlayStateClasses(cont.id);
   const isCol = Boolean(cont.collapsed);
   const colCls = isCol ? 'collapsed-blackbox' : '';
   const effH = isCol ? getCollapsedContainerHeight(cont) : cont.h;
@@ -4309,7 +4582,7 @@ function renderContainerBox(cont, kind, boxCls, hdrCls, icon) {
   const collapseLabel = isCol ? '[+] Expand' : '[–] Collapse';
   const tint = getItemColorInlineStyles(cont, kind);
   return `
-    <div class="${boxCls} ${sel} ${colCls}" data-item-id="${cont.id}" style="left:${cont.x}px;top:${cont.y}px;width:${cont.w}px;height:${effH}px;${tint.cardStyle}" onmousedown="startDragItem(event, '${kind}', '${cont.id}')">
+    <div class="${boxCls} ${sel} ${colCls} ${overlayCls}" data-item-id="${cont.id}" style="left:${cont.x}px;top:${cont.y}px;width:${cont.w}px;height:${effH}px;${tint.cardStyle}" onmousedown="startDragItem(event, '${kind}', '${cont.id}')">
       <div class="${hdrCls}" style="${tint.hdrStyle}">
         <span>${icon} ${cont.title} ${isCol ? '<small style="color:var(--gold);">(Black-Box)</small>' : ''}</span>
         <span style="display:flex;gap:4px;align-items:center;">
@@ -4527,10 +4800,23 @@ function renderAll(options = {}) {
         ${n.lastLlmOutput ? `<div style="font-size:9.5px;color:#86efac;font-family:Consolas,monospace;background:rgba(0,0,0,0.32);padding:3px 6px;border-radius:4px;">✅ ${escSvgXml(n.lastLlmOutput)}</div>` : ''}
       </div>
     ` : '';
+    const isTraceProc = Boolean(flowTracerState && flowTracerState.active && flowTracerState.activeNodeId === n.id && flowTracerState.phase === 'processing');
+    const tracePct = Math.round(Math.max(5, Math.min(100, (Number(flowTracerState && flowTracerState.phaseProgress) || 0) * 100)));
+    const traceProcHtml = isTraceProc ? `
+      <div class="node-trace-progress-badge" data-trace-node-badge="${n.id}">
+        <div style="display:flex;justify-content:space-between;gap:6px;">
+          <span>⚙️ Running on <strong>${escSvgXml(flowTracerState.activeFileLabel || 'input')}</strong></span>
+          <span>${tracePct}%</span>
+        </div>
+        <div class="node-trace-progress-track"><div class="node-trace-progress-fill" style="width:${tracePct}%;"></div></div>
+        <div style="color:#a7f3d0;">➔ Emitting: <code>${escSvgXml(flowTracerState.activeOutputLabel || 'output.json')}</code></div>
+      </div>
+    ` : '';
     const categoryBadge = n.category || (nodeType === 'idea' ? '💡 IDEA / TRIGGER' : (nodeType === 'llm_query' ? '🤖 LLM / AI QUERY' : (nodeType === 'external_in' ? '📥 EXTERNAL WORKFLOW IN' : (nodeType === 'external_out' ? '📤 EXTERNAL WORKFLOW OUT' : 'Processor'))));
     const nodeTint = getItemColorInlineStyles(n, 'node');
+    const nodeOverlayCls = getItemOverlayStateClasses(n.id);
     html += `
-      <div class="wf-node node-type-${nodeType} ${sel}" data-item-id="${n.id}" data-node-type="${nodeType}" style="left:${n.x}px;top:${n.y}px;width:${n.w || 255}px;${n.userResized && n.h ? `min-height:${n.h}px;` : ''}display:flex;flex-direction:column;${nodeTint.cardStyle}" onmousedown="startDragItem(event, 'node', '${n.id}')">
+      <div class="wf-node node-type-${nodeType} ${sel} ${nodeOverlayCls}" data-item-id="${n.id}" data-node-type="${nodeType}" style="left:${n.x}px;top:${n.y}px;width:${n.w || 255}px;${n.userResized && n.h ? `min-height:${n.h}px;` : ''}display:flex;flex-direction:column;${nodeTint.cardStyle}" onmousedown="startDragItem(event, 'node', '${n.id}')">
         <div class="node-hdr" style="${nodeTint.hdrStyle}">
           <span class="node-title-text">${n.title}</span>
           <span style="display:flex;gap:4px;align-items:center;">
@@ -4570,6 +4856,7 @@ function renderAll(options = {}) {
             </span>
           </div>
           ${n.lastStageRunSummary ? `<div style="font-size:9.5px;color:#fde68a;background:rgba(250,204,21,0.1);border:1px solid rgba(250,204,21,0.3);padding:3px 6px;border-radius:4px;font-family:Consolas,monospace;">${escSvgXml(n.lastStageRunSummary)}</div>` : ''}
+          ${traceProcHtml}
         </div>
         <div class="resize-handle" onmousedown="startResizeItem(event, 'node', '${n.id}')" title="Drag corner to resize node"></div>
       </div>
@@ -4594,19 +4881,24 @@ function renderAll(options = {}) {
       ? fc.selectedFileIndices
       : (typeof fc.selectedFileIndex === 'number' ? [fc.selectedFileIndex] : [0]);
     const fileStatesMap = (fc.fileStates && typeof fc.fileStates === 'object') ? fc.fileStates : {};
+    const hasLinkedFolder = Boolean(fc.folderHandle || (fc.folderPath && !String(fc.folderPath).startsWith('./assets')));
     const filesHtml = filesArr.map((f, fIdx) => {
       const fStr = typeof f === 'object' && f !== null ? (f.url || f.path || f.name || '') : String(f || '');
       const cleanPathOnly = fStr.split(' (')[0].trim();
       const fLabel = typeof f === 'object' && f !== null ? (f.name || f.label || fStr) : fStr;
-      const fHref = cleanPathOnly.startsWith('./') || cleanPathOnly.startsWith('/') || cleanPathOnly.startsWith('http')
+      const isPlaceholderSample = isOfflineStandaloneMode() && !hasLinkedFolder && !/^ht(?:tp|tps):\/\//i.test(cleanPathOnly);
+      const fHref = (!isPlaceholderSample && (cleanPathOnly.startsWith('./') || cleanPathOnly.startsWith('/') || cleanPathOnly.startsWith('http')))
         ? cleanPathOnly
-        : (fc.folderPath ? `${fc.folderPath.replace(/\/$/, '')}/${cleanPathOnly}` : '');
+        : ((!isPlaceholderSample && fc.folderPath) ? `${fc.folderPath.replace(/\/$/, '')}/${cleanPathOnly}` : '');
       const fLocalPath = cleanPathOnly.startsWith('./') || cleanPathOnly.startsWith('/') ? cleanPathOnly : `${folderLocalPath.replace(/\/$/, '')}/${cleanPathOnly}`;
       const isSelectedFile = selectedIndices.includes(fIdx);
       const stEntry = fileStatesMap[fIdx] || fileStatesMap[fStr] || { status: 'verified' };
       const stKind = stEntry.status || 'verified';
+      const isTraceUpdatedRow = Boolean(stEntry.traceUpdated || (flowTracerState && flowTracerState.updatedBucketMap && flowTracerState.updatedBucketMap[`${fc.id}::${fLabel}`]));
       let badgeHtml = `<span style="padding:1px 5px;border-radius:4px;background:rgba(16,185,129,0.16);border:1px solid rgba(16,185,129,0.42);color:#6ee7b7;font-size:9px;white-space:nowrap;" title="Existing file verified on disk">🟢 Verified</span>`;
-      if (stKind === 'identical') {
+      if (stEntry.traceUpdated) {
+        badgeHtml = `<span style="padding:1px 5px;border-radius:4px;background:rgba(16,185,129,0.28);border:1px solid #34d399;color:#ecfdf5;font-size:9px;font-weight:700;white-space:nowrap;" title="${escSvgXml(stEntry.traceNote || 'Updated by flow tracer')}">✨ ${escSvgXml(stEntry.traceBadge || 'Generated')}</span>`;
+      } else if (stKind === 'identical') {
         badgeHtml = `<span style="padding:1px 5px;border-radius:4px;background:rgba(16,185,129,0.22);border:1px solid #10b981;color:#a7f3d0;font-size:9px;white-space:nowrap;" title="SHA-256 matches existing file 100% — no overwrite needed">🟢 Identical (No Overwrite Needed)</span>`;
       } else if (stKind === 'diff') {
         const deltaLbl = stEntry.deltaSummary || '+Δ lines / fields';
@@ -4624,16 +4916,16 @@ function renderAll(options = {}) {
         </div>
       ` : '';
       return `
-      <div class="bucket-file-row no-drag" style="display:flex;flex-direction:column;gap:3px;padding:4px 6px;background:${isSelectedFile ? 'rgba(56,189,248,0.14)' : 'rgba(255,255,255,0.04)'};border:1px solid ${isSelectedFile ? 'rgba(56,189,248,0.55)' : 'rgba(255,255,255,0.06)'};border-radius:4px;font-family:Consolas,monospace;font-size:10px;" onclick="toggleSelectBucketFile(event, '${fc.id}', ${fIdx})" onmousedown="event.stopPropagation()">
+      <div class="bucket-file-row no-drag ${isTraceUpdatedRow ? 'trace-file-updated' : ''}" style="display:flex;flex-direction:column;gap:3px;padding:4px 6px;background:${isSelectedFile ? 'rgba(56,189,248,0.14)' : 'rgba(255,255,255,0.04)'};border:1px solid ${isSelectedFile ? 'rgba(56,189,248,0.55)' : 'rgba(255,255,255,0.06)'};border-radius:4px;font-family:Consolas,monospace;font-size:10px;" onclick="toggleSelectBucketFile(event, '${fc.id}', ${fIdx})" onmousedown="event.stopPropagation()">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
           <label class="no-drag" style="display:flex;align-items:center;gap:5px;cursor:pointer;flex:1;min-width:0;" onclick="event.stopPropagation()">
-            <input type="checkbox" class="no-drag" ${isSelectedFile ? 'checked' : ''} onchange="toggleSelectBucketFile(event, '${fc.id}', ${fIdx})" title="Select this file for single-file step execution (▶ Step Selected ➔ Next Stage)" />
+            <input type="checkbox" class="no-drag" ${isSelectedFile ? 'checked' : ''} onchange="toggleSelectBucketFile(event, '${fc.id}', ${fIdx})" title="Select this file for single-file step execution (▶ Trace or ▶ Step Selected)" />
             ${fHref ? `<a href="${fHref}" target="_blank" rel="noopener" class="no-drag" style="color:var(--aqua);text-decoration:underline;word-break:break-all;" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()">📄 ${fLabel} ↗</a>` : `<span style="word-break:break-all;">📄 ${fLabel}</span>`}
           </label>
           <span style="display:flex;align-items:center;gap:3px;flex-shrink:0;">
             ${badgeHtml}
-            <button type="button" class="hdr-mini-btn no-drag" style="padding:1px 4px;font-size:9px;color:#fde68a;" onclick="openLocalPath('${escSvgXml(fLocalPath)}', 'select', event)" title="📂 Reveal file in Windows Explorer">📂</button>
-            <button type="button" class="hdr-mini-btn no-drag" style="padding:1px 4px;font-size:9px;color:#7dd3fc;" onclick="openLocalPath('${escSvgXml(fLocalPath)}', 'app', event)" title="🚀 Open file in associated desktop app">🚀</button>
+            <button type="button" class="hdr-mini-btn no-drag" style="padding:1px 4px;font-size:9px;color:#fde68a;" onclick="openLocalPath('${escSvgXml(fLocalPath)}', 'select', event, '${fc.id}')" title="📂 Reveal or connect local folder">📂</button>
+            <button type="button" class="hdr-mini-btn no-drag" style="padding:1px 4px;font-size:9px;color:#7dd3fc;" onclick="openLocalPath('${escSvgXml(fLocalPath)}', 'app', event, '${fc.id}')" title="🚀 Open file (connects local folder if sample placeholder)">🚀</button>
             <button class="hdr-mini-btn no-drag" style="padding:0 4px;font-size:9px;color:var(--red);" onclick="removeFileFromBucket(event, '${fc.id}', ${fIdx})" title="Remove file from container">✕</button>
           </span>
         </div>
@@ -4647,8 +4939,9 @@ function renderAll(options = {}) {
       <div class="port-row port-row-stacked port-row-out"><span class="port-lbl-above">${p}</span>${renderPortDot(fc.id, p, 'out')}</div>
     `).join('');
     const bucketTint = getItemColorInlineStyles(fc, 'bucket');
+    const bucketOverlayCls = getItemOverlayStateClasses(fc.id);
     html += `
-      <div class="file-bucket ${sel}" data-item-id="${fc.id}" style="left:${fc.x}px;top:${fc.y}px;width:${fc.w || 360}px;${fc.userResized && fc.h ? `min-height:${fc.h}px;` : ''}display:flex;flex-direction:column;${bucketTint.cardStyle}" onmousedown="startDragItem(event, 'bucket', '${fc.id}')">
+      <div class="file-bucket ${sel} ${bucketOverlayCls}" data-item-id="${fc.id}" style="left:${fc.x}px;top:${fc.y}px;width:${fc.w || 360}px;${fc.userResized && fc.h ? `min-height:${fc.h}px;` : ''}display:flex;flex-direction:column;${bucketTint.cardStyle}" onmousedown="startDragItem(event, 'bucket', '${fc.id}')">
         <div class="bucket-hdr" style="${bucketTint.hdrStyle}">
           <span>🗄️ ${fc.title}</span>
           <span style="display:flex;gap:4px;align-items:center;">
@@ -4709,8 +5002,9 @@ function renderAll(options = {}) {
       <div class="port-row port-row-stacked port-row-out"><span class="port-lbl-above">${p}</span>${renderPortDot(bus.id, p, 'out')}</div>
     `).join('');
     const busTint = getItemColorInlineStyles(bus, 'bus');
+    const busOverlayCls = getItemOverlayStateClasses(bus.id);
     html += `
-      <div class="bus-bar-node ${sel}" data-item-id="${bus.id}" style="left:${bus.x}px;top:${bus.y}px;width:${bus.w || 250}px;${bus.h ? `min-height:${bus.h}px;` : ''}${busTint.cardStyle}" onmousedown="startDragItem(event, 'bus', '${bus.id}')">
+      <div class="bus-bar-node ${sel} ${busOverlayCls}" data-item-id="${bus.id}" style="left:${bus.x}px;top:${bus.y}px;width:${bus.w || 250}px;${bus.h ? `min-height:${bus.h}px;` : ''}${busTint.cardStyle}" onmousedown="startDragItem(event, 'bus', '${bus.id}')">
         <div class="bus-hdr" style="${busTint.hdrStyle}">
           <span>${bus.title}</span>
           <span style="display:flex;gap:4px;align-items:center;">
@@ -4773,8 +5067,9 @@ function renderAll(options = {}) {
         `).join('')}
       </div>
     ` : '';
+    const stickyOverlayCls = getItemOverlayStateClasses(sn.id);
     html += `
-      <div class="sticky-note-card ${colorCls} ${sel}" data-item-id="${sn.id}" data-sticky-id="${sn.id}" style="left:${sn.x}px;top:${sn.y}px;width:${sn.w || 280}px;min-height:${sn.h || 240}px;${stickyTint.cardStyle}" onmousedown="startDragItem(event, 'sticky', '${sn.id}')" onpaste="handleStickyImagePaste(event, '${sn.id}')">
+      <div class="sticky-note-card ${colorCls} ${sel} ${stickyOverlayCls}" data-item-id="${sn.id}" data-sticky-id="${sn.id}" style="left:${sn.x}px;top:${sn.y}px;width:${sn.w || 280}px;min-height:${sn.h || 240}px;${stickyTint.cardStyle}" onmousedown="startDragItem(event, 'sticky', '${sn.id}')" onpaste="handleStickyImagePaste(event, '${sn.id}')">
         <div class="sticky-hdr" style="${stickyTint.hdrStyle}">
           <input type="text" class="sticky-title-input no-drag" value="${escSvgXml(sn.title || '📝 Sticky Note')}" oninput="updateStickyNoteField('${sn.id}', 'title', this.value)" title="Edit Sticky Note Title" />
           <select class="no-drag" style="padding:1px 4px;font-size:9.5px;border-radius:4px;max-width:74px;" onchange="updateStickyNoteField('${sn.id}', 'assignee', this.value, true)" title="Reminder Assignee">
@@ -5211,9 +5506,24 @@ function onBucketCustomExtInput(customVal) {
 }
 window.onBucketCustomExtInput = onBucketCustomExtInput;
 
-async function openLocalPath(targetPath, mode = 'explorer', ev = null) {
+async function openLocalPath(targetPath, mode = 'explorer', ev = null, bucketId = '') {
   if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
   const cleanPath = String(targetPath || '').trim() || './assets';
+  const targetBucket = bucketId ? (S && S.fileContainers || []).find(b => b.id === bucketId) : null;
+  const isDefaultPlaceholder = cleanPath === './assets' || cleanPath.startsWith('./assets/');
+  if (isOfflineStandaloneMode() && isDefaultPlaceholder && !(targetBucket && targetBucket.folderHandle)) {
+    const promptMsg = `📁 "${cleanPath}" is an offline sample placeholder — please choose a local folder first.`;
+    setStatus(promptMsg);
+    if (targetBucket && typeof window !== 'undefined' && typeof window.showDirectoryPicker === 'function') {
+      const wantsPicker = typeof confirm === 'function'
+        ? confirm(`"${cleanPath}" is a sample placeholder file with no local folder connected yet.\n\nChoose a local folder now to link real files?`)
+        : false;
+      if (wantsPicker) {
+        return chooseFolderForContainer(targetBucket.id, ev);
+      }
+    }
+    return { ok: false, placeholder: true, path: cleanPath };
+  }
   if (mode === 'explorer' && typeof window !== 'undefined' && typeof window.showDirectoryPicker === 'function') {
     try {
       const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
@@ -5863,9 +6173,20 @@ function syncSelectedDomClasses() {
       const isSel = Boolean(pathway.active && id === pathway.selectedId);
       const isConn = Boolean(pathway.active && !isSel && pathway.neighborIds.has(id));
       const isDim = Boolean(pathway.active && !isSel && !isConn);
+      const isSearchHit = Boolean(canvasSearchState && canvasSearchState.matchIdSet && canvasSearchState.matchIdSet.has(id));
+      const isSearchCur = Boolean(isSearchHit && canvasSearchState.activeId === id);
+      const tActive = Boolean(flowTracerState && flowTracerState.active);
+      const isTraceProc = Boolean(tActive && flowTracerState.activeNodeId === id && flowTracerState.phase === 'processing');
+      const isTraceRecv = Boolean(tActive && flowTracerState.receivingNodeId === id && (flowTracerState.phase === 'transit_in' || flowTracerState.phase === 'emit_out'));
+      const isTraceDone = Boolean(tActive && flowTracerState.completedNodeIds && flowTracerState.completedNodeIds.has(id));
       el.classList.toggle('selected', isSel);
       el.classList.toggle('pathway-connected', isConn);
       el.classList.toggle('pathway-dimmed', isDim);
+      el.classList.toggle('search-match-highlight', isSearchHit);
+      el.classList.toggle('search-match-active', isSearchCur);
+      el.classList.toggle('trace-node-processing', isTraceProc);
+      el.classList.toggle('trace-receiving', isTraceRecv);
+      el.classList.toggle('trace-node-done', isTraceDone);
     });
     const dotEls = domLayer.querySelectorAll('.port-dot[data-node][data-port]');
     dotEls.forEach(dot => {
@@ -6155,7 +6476,90 @@ function toggleHotkeyHelpPopover(ev, forceOpen) {
   if (!pop) return;
   const nextOpen = typeof forceOpen === 'boolean' ? forceOpen : !pop.classList.contains('open');
   pop.classList.toggle('open', nextOpen);
+  if (nextOpen) toggleGithubFeedbackPopover(null, false);
 }
+
+function setGithubFeedbackKind(kind) {
+  githubFeedbackKind = kind === 'feature' ? 'feature' : 'bug';
+  const bugBtn = document.getElementById('btnGhKindBug');
+  const featBtn = document.getElementById('btnGhKindFeat');
+  if (bugBtn && bugBtn.classList) bugBtn.classList.toggle('active', githubFeedbackKind === 'bug');
+  if (featBtn && featBtn.classList) featBtn.classList.toggle('active', githubFeedbackKind === 'feature');
+  return githubFeedbackKind;
+}
+window.setGithubFeedbackKind = setGithubFeedbackKind;
+
+function toggleGithubFeedbackPopover(ev, forceOpen) {
+  if (ev && ev.stopPropagation) ev.stopPropagation();
+  const pop = document.getElementById('githubFeedbackPopover');
+  if (!pop) return;
+  const nextOpen = typeof forceOpen === 'boolean' ? forceOpen : !pop.classList.contains('open');
+  pop.classList.toggle('open', nextOpen);
+  if (nextOpen) {
+    const hPop = document.getElementById('hotkeyHelpPopover');
+    if (hPop && hPop.classList) hPop.classList.remove('open');
+    setGithubFeedbackKind(githubFeedbackKind);
+    const titleEl = document.getElementById('ghFeedbackTitle');
+    if (titleEl && typeof titleEl.focus === 'function') titleEl.focus();
+  }
+}
+window.toggleGithubFeedbackPopover = toggleGithubFeedbackPopover;
+
+function buildGithubIssuePayload() {
+  const titleEl = document.getElementById('ghFeedbackTitle');
+  const bodyEl = document.getElementById('ghFeedbackBody');
+  const kindLabel = githubFeedbackKind === 'feature' ? 'Feature' : 'Bug';
+  const prefix = githubFeedbackKind === 'feature' ? '[Feature]: ' : '[Bug]: ';
+  const rawTitle = (titleEl && titleEl.value ? String(titleEl.value).trim() : '') || 'SandboxWorkflow UI feedback';
+  const fullTitle = rawTitle.startsWith('[') ? rawTitle : (prefix + rawTitle);
+  const rawDetails = (bodyEl && bodyEl.value ? String(bodyEl.value).trim() : '') || '_Describe steps, expected behavior, or suggestion here..._';
+  const fullBody = [
+    `### ${kindLabel} Summary`,
+    rawDetails,
+    '',
+    '### Environment',
+    '- **Engine**: SandboxWorkflow v1.8.1',
+    '- **Note**: Privacy-safe submission (no workflow JSON or local paths included)'
+  ].join('\n');
+  const baseUrl = ['ht', 'tps://github.com/pzetts/SandboxWorkflow/issues/new'].join('');
+  const params = new URLSearchParams({
+    title: fullTitle,
+    body: fullBody,
+    labels: githubFeedbackKind === 'feature' ? 'enhancement' : 'bug'
+  });
+  return {
+    title: fullTitle,
+    body: fullBody,
+    url: `${baseUrl}?${params.toString()}`
+  };
+}
+window.buildGithubIssuePayload = buildGithubIssuePayload;
+
+function openGithubFeedbackIssue() {
+  const payload = buildGithubIssuePayload();
+  if (typeof window !== 'undefined' && typeof window.open === 'function') {
+    window.open(payload.url, '_blank', 'noopener');
+  }
+  setStatus('🐞 Opened privacy-safe GitHub issue draft in new tab (review before submitting)');
+  toggleGithubFeedbackPopover(null, false);
+  return payload;
+}
+window.openGithubFeedbackIssue = openGithubFeedbackIssue;
+
+async function copyGithubFeedbackMarkdown() {
+  const payload = buildGithubIssuePayload();
+  const txt = `${payload.title}\n\n${payload.body}`;
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      await navigator.clipboard.writeText(txt);
+      setStatus('📋 Copied GitHub issue Markdown to clipboard!');
+      return true;
+    }
+  } catch (e) {}
+  setStatus('ℹ️ Issue draft ready — copy or click Open GitHub Issue');
+  return false;
+}
+window.copyGithubFeedbackMarkdown = copyGithubFeedbackMarkdown;
 
 function toggleLockLayout() {
   if (S.lockLayout) {
@@ -6259,6 +6663,15 @@ window.addEventListener('mousedown', (ev) => {
     if (!(ev.target && ev.target.closest && (ev.target.closest('#hotkeyHelpPopover') || ev.target.closest('#btnHotkeyHelp')))) {
       if (ev.target !== popEl && ev.target !== btnEl) {
         popEl.classList.remove('open');
+      }
+    }
+  }
+  const ghPop = document.getElementById('githubFeedbackPopover');
+  const ghBtn = document.getElementById('btnGithubFeedback');
+  if (ghPop && ghPop.classList && ghPop.classList.contains('open')) {
+    if (!(ev.target && ev.target.closest && (ev.target.closest('#githubFeedbackPopover') || ev.target.closest('#btnGithubFeedback')))) {
+      if (ev.target !== ghPop && ev.target !== ghBtn) {
+        ghPop.classList.remove('open');
       }
     }
   }
@@ -6511,6 +6924,7 @@ window.addEventListener('keydown', (ev) => {
     if (S.fullScreenView) S.fullScreenView = false;
     resetInteractionModes();
     toggleHoneycombPopover(null, false);
+    toggleGithubFeedbackPopover(null, false);
     closeFullSpectrumColorModal();
     deselectAll();
     return;
@@ -6552,31 +6966,457 @@ function toggleWireStyle() {
   setWireStyle(next);
 }
 
-function simulateFlowPulse() {
-  clearInterval(pulseTimer);
-  pulseProgress = 0;
-  setStatus('⚡ Simulating workflow execution pulse across wires...');
-  pulseTimer = setInterval(() => {
-    pulseProgress += 0.08;
-    if (pulseProgress >= 1.0) {
-      clearInterval(pulseTimer);
-      pulseTimer = null;
-      S.wires.forEach(w => {
-        const bucket = S.fileContainers.find(b => b.id === w.toNode);
-        const srcNode = S.nodes.find(n => n.id === w.fromNode);
-        if (bucket && srcNode) {
-          const slug = srcNode.title.replace(/[^a-zA-Z0-9]+/g, '_').toLowerCase();
-          const genFile = `${slug}_${w.fromPort}_out.json`;
-          if (!bucket.files.includes(genFile)) bucket.files.push(genFile);
-        }
+function cleanTraceSlug(raw) {
+  return String(raw || 'stage')
+    .replace(/[\u{1F300}-\u{1FAFF}]/gu, '')
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toLowerCase()
+    .slice(0, 28) || 'stage';
+}
+
+function getBucketSelectedFileName(fc) {
+  if (!fc || !Array.isArray(fc.files) || !fc.files.length) return 'input_batch.json';
+  const indices = Array.isArray(fc.selectedFileIndices) && fc.selectedFileIndices.length
+    ? fc.selectedFileIndices
+    : (typeof fc.selectedFileIndex === 'number' ? [fc.selectedFileIndex] : [0]);
+  const idx = Math.max(0, Math.min(fc.files.length - 1, indices[0] || 0));
+  const raw = fc.files[idx];
+  const str = typeof raw === 'object' && raw !== null ? (raw.name || raw.label || raw.path || 'input_file') : String(raw || 'input_file');
+  return str.split(' (')[0].trim().split(/[\\/]/).pop() || 'input_file';
+}
+
+function deriveStageOutputFilename(fromObj, toObj, fromPort, seedInput) {
+  const portSlug = cleanTraceSlug(fromPort || 'out');
+  const seedBase = String(seedInput || '').replace(/\.[^.]+$/, '');
+  const bucketPat = toObj && String(toObj.pattern || toObj.filter || '');
+  let ext = 'json';
+  if (/\.csv\b/i.test(bucketPat)) ext = 'csv';
+  else if (/\.zip\b/i.test(bucketPat)) ext = 'zip';
+  else if (/\.html\b/i.test(bucketPat)) ext = 'html';
+  else if (seedInput && /\.[a-z0-9]{2,5}$/i.test(seedInput) && portSlug.includes('report')) ext = seedInput.split('.').pop();
+  if (fromObj && (fromObj.category === 'Bucket' || (S.fileContainers || []).some(b => b.id === fromObj.id))) {
+    return seedInput || getBucketSelectedFileName(fromObj);
+  }
+  const nodeSlug = cleanTraceSlug((fromObj && fromObj.title) || 'step');
+  if (seedBase && nodeSlug.length <= 16) return `${nodeSlug}_${portSlug}.${ext}`;
+  return `${nodeSlug}_${portSlug}_out.${ext}`;
+}
+
+function buildFlowTracePlan() {
+  if (!S || !Array.isArray(S.wires) || !S.wires.length) return [];
+  const wireList = S.wires.filter(Boolean);
+  const byFrom = {};
+  const inDegree = {};
+  wireList.forEach(w => {
+    if (!byFrom[w.fromNode]) byFrom[w.fromNode] = [];
+    byFrom[w.fromNode].push(w);
+    inDegree[w.toNode] = (inDegree[w.toNode] || 0) + 1;
+    if (inDegree[w.fromNode] === undefined) inDegree[w.fromNode] = 0;
+  });
+
+  let startIds = [];
+  let explicitSeedFile = '';
+  if (selectedItem && selectedItem.id) {
+    if (selectedItem.kind === 'wire') {
+      const selWire = wireList.find(w => w.id === selectedItem.id);
+      if (selWire) {
+        startIds = [selWire.fromNode];
+      }
+    } else {
+      startIds = [selectedItem.id];
+      const selBucket = (S.fileContainers || []).find(b => b.id === selectedItem.id);
+      if (selBucket) {
+        explicitSeedFile = getBucketSelectedFileName(selBucket);
+      }
+    }
+  }
+  if (!startIds.length) {
+    const checkedBucket = (S.fileContainers || []).find(b =>
+      Array.isArray(b.files) && b.files.length > 0 && Array.isArray(b.selectedFileIndices) && b.selectedFileIndices.length > 0 && (byFrom[b.id] || []).length > 0
+    );
+    if (checkedBucket) {
+      startIds = [checkedBucket.id];
+      explicitSeedFile = getBucketSelectedFileName(checkedBucket);
+    } else {
+      const rootNodes = Object.keys(inDegree).filter(id => inDegree[id] === 0 && (byFrom[id] || []).length > 0);
+      startIds = rootNodes.length ? rootNodes : [wireList[0].fromNode];
+    }
+  }
+
+  const fileForNode = {};
+  startIds.forEach(id => {
+    const startObj = findAnyItemById(id);
+    if (explicitSeedFile) {
+      fileForNode[id] = explicitSeedFile;
+    } else if (startObj && (S.fileContainers || []).some(b => b.id === id)) {
+      fileForNode[id] = getBucketSelectedFileName(startObj);
+    } else {
+      const upWire = wireList.find(w => w.toNode === id);
+      const upObj = upWire ? findAnyItemById(upWire.fromNode) : null;
+      if (upObj && (S.fileContainers || []).some(b => b.id === upObj.id)) {
+        fileForNode[id] = getBucketSelectedFileName(upObj);
+      } else {
+        fileForNode[id] = `${cleanTraceSlug(startObj && startObj.title)}_input.json`;
+      }
+    }
+  });
+
+  const hops = [];
+  const seenWires = new Set();
+  const queue = startIds.slice();
+  const enqueuedNodes = new Set(queue);
+  while (queue.length > 0 && hops.length < 48) {
+    const curId = queue.shift();
+    const outWires = byFrom[curId] || [];
+    const curObj = findAnyItemById(curId);
+    const curInput = fileForNode[curId] || `${cleanTraceSlug(curObj && curObj.title)}_in.json`;
+    outWires.forEach(w => {
+      if (!w || seenWires.has(w.id)) return;
+      seenWires.add(w.id);
+      const toObj = findAnyItemById(w.toNode);
+      const isDestBucket = Boolean((S.fileContainers || []).some(b => b.id === w.toNode));
+      const outFile = deriveStageOutputFilename(curObj, toObj, w.fromPort, curInput);
+      const hopInput = ((S.fileContainers || []).some(b => b.id === curId)) ? curInput : outFile;
+      hops.push({
+        index: hops.length,
+        wire: w,
+        fromId: curId,
+        toId: w.toNode,
+        fromObj: curObj,
+        toObj,
+        fromTitle: (curObj && curObj.title) || curId,
+        toTitle: (toObj && toObj.title) || w.toNode,
+        inputFile: hopInput,
+        outputFile: isDestBucket ? hopInput : deriveStageOutputFilename(toObj, null, (toObj && toObj.outPorts && toObj.outPorts[0]) || 'out', hopInput),
+        isDestBucket
       });
-      setStatus('✅ Flow Pulse Complete — Downstream File Containers updated!');
-      renderAll();
-      return;
+      if (!fileForNode[w.toNode]) {
+        fileForNode[w.toNode] = hopInput;
+      }
+      if (!enqueuedNodes.has(w.toNode)) {
+        enqueuedNodes.add(w.toNode);
+        queue.push(w.toNode);
+      }
+    });
+  }
+  return hops;
+}
+window.buildFlowTracePlan = buildFlowTracePlan;
+
+function syncFlowTraceControlsUI() {
+  const playBtn = document.getElementById('btnRunFlowPulse');
+  const stopBtn = document.getElementById('btnStopFlowTrace');
+  const speedSel = document.getElementById('flowTraceSpeedSelect');
+  const active = Boolean(flowTracerState && flowTracerState.active);
+  const paused = Boolean(flowTracerState && flowTracerState.paused);
+  if (playBtn) {
+    if (playBtn.classList && typeof playBtn.classList.toggle === 'function') {
+      playBtn.classList.toggle('tracing', active && !paused);
+    }
+    const lbl = playBtn.querySelector ? playBtn.querySelector('.btn-lbl') : null;
+    if (lbl) {
+      lbl.textContent = active ? (paused ? 'Resume' : 'Pause') : 'Trace';
+    }
+  }
+  if (stopBtn && stopBtn.style) {
+    stopBtn.style.display = active ? 'inline-flex' : 'none';
+  }
+  if (speedSel && String(speedSel.value) !== String(flowTracerState.speed)) {
+    speedSel.value = String(flowTracerState.speed);
+  }
+}
+
+function commitTraceHopOutputToBucket(hop) {
+  if (!hop || !hop.toObj || !hop.isDestBucket) return null;
+  const fc = (S.fileContainers || []).find(b => b.id === hop.toId);
+  if (!fc) return null;
+  if (!Array.isArray(fc.files)) fc.files = [];
+  if (!fc.fileStates || typeof fc.fileStates !== 'object') fc.fileStates = {};
+  if (fc.collapsedSections && fc.collapsedSections.files) {
+    fc.collapsedSections.files = false;
+  }
+  const fName = hop.inputFile || `${cleanTraceSlug(hop.fromTitle)}_output.json`;
+  const existingIdx = fc.files.findIndex(item => {
+    const label = typeof item === 'object' && item !== null ? (item.name || item.label || item.path || '') : String(item || '');
+    return label.split(' (')[0].trim() === fName;
+  });
+  let targetIdx = existingIdx;
+  if (targetIdx < 0) {
+    fc.files.push(fName);
+    targetIdx = fc.files.length - 1;
+  }
+  fc.fileStates[targetIdx] = {
+    status: 'verified',
+    traceUpdated: true,
+    traceBadge: existingIdx >= 0 ? 'Updated' : 'Generated',
+    traceNote: `Updated during sequential trace from ${hop.fromTitle}`
+  };
+  fc.selectedFileIndex = targetIdx;
+  fc.selectedFileIndices = [targetIdx];
+  fc.lastStepRunReport = `✨ ${existingIdx >= 0 ? 'Updated' : 'Generated'} [${fName}] from ${hop.fromTitle}`;
+  flowTracerState.updatedBucketMap[`${fc.id}::${fName}`] = true;
+  resetAutoFitOnItemAndParents(fc);
+  return { bucketId: fc.id, fileName: fName, fileIndex: targetIdx, updatedExisting: existingIdx >= 0 };
+}
+
+function ensureTraceTargetVisibleInViewport(targetObj) {
+  if (!targetObj || !viewport || !S) return;
+  const vw = viewport.clientWidth || 0;
+  const vh = viewport.clientHeight || 0;
+  if (vw < 150 || vh < 150) return;
+  const z = Number(S.zoom) || 1.0;
+  const cx = (Number(targetObj.x) || 0) + (Number(targetObj.w) || 260) / 2;
+  const cy = (Number(targetObj.y) || 0) + (Number(targetObj.h) || 180) / 2;
+  const sx = S.panX + cx * z;
+  const sy = S.panY + cy * z;
+  if (sx < 80 || sx > vw - 80 || sy < 70 || sy > vh - 70) {
+    S.panX = Math.round(vw / 2 - cx * z);
+    S.panY = Math.round(vh / 2 - cy * z);
+    applyWorldTransform();
+  }
+}
+
+function applyFlowTracerVisualStep(hop, nextPhase, phaseProg) {
+  flowTracerState.activeWireId = hop.wire.id;
+  flowTracerState.activeFileLabel = hop.inputFile;
+  flowTracerState.activeOutputLabel = hop.outputFile;
+  flowTracerState.phase = nextPhase;
+  flowTracerState.phaseProgress = phaseProg;
+  if (nextPhase === 'transit_in') {
+    flowTracerState.activeNodeId = '';
+    flowTracerState.receivingNodeId = hop.toId;
+  } else if (nextPhase === 'processing') {
+    flowTracerState.activeNodeId = hop.toId;
+    flowTracerState.receivingNodeId = '';
+  } else if (nextPhase === 'emit_out') {
+    flowTracerState.activeNodeId = '';
+    flowTracerState.receivingNodeId = hop.toId;
+  }
+}
+
+function completeCurrentTraceHopAndAdvance(shouldRender = true) {
+  const hops = flowTracerState.hops || [];
+  const hop = hops[flowTracerState.hopIndex];
+  if (!hop) return stopSequentialFlowTrace(false);
+  flowTracerState.completedWireIds.add(hop.wire.id);
+  flowTracerState.completedNodeIds.add(hop.fromId);
+  flowTracerState.completedNodeIds.add(hop.toId);
+  const bucketUpdate = commitTraceHopOutputToBucket(hop);
+  if (bucketUpdate) {
+    setStatus(`📦 Hop ${hop.index + 1}/${hops.length}: "${hop.toTitle}" populated [${bucketUpdate.fileName}]`);
+  } else {
+    setStatus(`✅ Hop ${hop.index + 1}/${hops.length}: ${hop.fromTitle} ➔ ${hop.toTitle} emitted [${hop.outputFile}]`);
+  }
+  flowTracerState.hopIndex += 1;
+  if (flowTracerState.hopIndex >= hops.length) {
+    if (flowTracerState.timerId) {
+      clearInterval(flowTracerState.timerId);
+      flowTracerState.timerId = null;
+    }
+    flowTracerState.paused = false;
+    flowTracerState.active = false;
+    flowTracerState.phase = 'complete';
+    flowTracerState.activeWireId = '';
+    flowTracerState.activeNodeId = '';
+    flowTracerState.receivingNodeId = '';
+    setStatus(`✅ Flow Trace Complete (${hops.length} hop${hops.length === 1 ? '' : 's'}) — Downstream nodes & File Containers updated!`);
+    if (shouldRender) renderAll({ preserveInspector: true });
+    syncFlowTraceControlsUI();
+    return { done: true, totalHops: hops.length };
+  }
+  const nextHop = hops[flowTracerState.hopIndex];
+  applyFlowTracerVisualStep(nextHop, 'transit_in', 0.05);
+  ensureTraceTargetVisibleInViewport(nextHop.toObj);
+  if (shouldRender) renderAll({ preserveInspector: true });
+  syncFlowTraceControlsUI();
+  return { done: false, hopIndex: flowTracerState.hopIndex, totalHops: hops.length };
+}
+
+function advanceSequentialFlowTraceTick() {
+  if (!flowTracerState.active || flowTracerState.paused) return null;
+  const hops = flowTracerState.hops || [];
+  const hop = hops[flowTracerState.hopIndex];
+  if (!hop) return stopSequentialFlowTrace(false);
+  const speed = Math.max(0.25, Math.min(4.0, Number(flowTracerState.speed) || 1.0));
+  const delta = 0.045 * speed;
+  if (flowTracerState.phase === 'transit_in') {
+    flowTracerState.phaseProgress += delta;
+    if (flowTracerState.phaseProgress >= 1.0) {
+      applyFlowTracerVisualStep(hop, 'processing', 0.08);
+      setStatus(`⚙️ Running "${hop.toTitle}" on [${hop.inputFile}]...`);
+      renderAll({ preserveInspector: true });
+      return { phase: 'processing', hopIndex: flowTracerState.hopIndex };
     }
     renderWires();
-  }, 45);
+    return { phase: 'transit_in', progress: flowTracerState.phaseProgress };
+  }
+  if (flowTracerState.phase === 'processing') {
+    flowTracerState.phaseProgress += delta * 0.9;
+    const fillEl = document.querySelector
+      ? document.querySelector(`.node-trace-progress-badge[data-trace-node-badge="${hop.toId}"] .node-trace-progress-fill`)
+      : null;
+    const pct = Math.round(Math.min(100, flowTracerState.phaseProgress * 100));
+    if (fillEl && fillEl.style) fillEl.style.width = `${pct}%`;
+    if (flowTracerState.phaseProgress >= 1.0) {
+      return completeCurrentTraceHopAndAdvance(true);
+    }
+    return { phase: 'processing', progress: flowTracerState.phaseProgress };
+  }
+  return completeCurrentTraceHopAndAdvance(true);
 }
+window.advanceSequentialFlowTraceTick = advanceSequentialFlowTraceTick;
+
+function startSequentialFlowTrace(options = {}) {
+  const hops = buildFlowTracePlan();
+  if (!hops.length) {
+    setStatus('ℹ️ Add at least 1 connected wire between nodes or File Containers to trace a flow.');
+    return { ok: false, reason: 'no_wires' };
+  }
+  if (flowTracerState.timerId) clearInterval(flowTracerState.timerId);
+  const speedEl = document.getElementById('flowTraceSpeedSelect');
+  const speedVal = Number(options.speed || (speedEl && speedEl.value) || flowTracerState.speed || 1.0) || 1.0;
+  flowTracerState = {
+    active: true,
+    paused: Boolean(options.paused),
+    speed: speedVal,
+    hops,
+    hopIndex: 0,
+    phase: 'transit_in',
+    phaseProgress: 0.05,
+    completedWireIds: new Set(),
+    completedNodeIds: new Set(),
+    activeWireId: hops[0].wire.id,
+    activeNodeId: '',
+    receivingNodeId: hops[0].toId,
+    activeFileLabel: hops[0].inputFile,
+    activeOutputLabel: hops[0].outputFile,
+    updatedBucketMap: {},
+    timerId: null
+  };
+  ensureTraceTargetVisibleInViewport(hops[0].fromObj || hops[0].toObj);
+  setStatus(`▶ Tracing [${hops[0].inputFile}] (${speedVal}x): ${hops[0].fromTitle} ➔ ${hops[0].toTitle} (1/${hops.length})`);
+  if (!flowTracerState.paused) {
+    flowTracerState.timerId = setInterval(advanceSequentialFlowTraceTick, 65);
+  }
+  syncFlowTraceControlsUI();
+  renderAll({ preserveInspector: true });
+  return { ok: true, hopsCount: hops.length, speed: speedVal };
+}
+window.startSequentialFlowTrace = startSequentialFlowTrace;
+
+function toggleSequentialFlowTrace() {
+  if (!flowTracerState.active) {
+    return startSequentialFlowTrace({ paused: false });
+  }
+  if (flowTracerState.paused) {
+    flowTracerState.paused = false;
+    if (!flowTracerState.timerId) {
+      flowTracerState.timerId = setInterval(advanceSequentialFlowTraceTick, 65);
+    }
+    const hop = flowTracerState.hops[flowTracerState.hopIndex];
+    setStatus(`▶ Resumed trace (${flowTracerState.speed}x): ${hop ? hop.fromTitle + ' ➔ ' + hop.toTitle : ''}`);
+  } else {
+    flowTracerState.paused = true;
+    if (flowTracerState.timerId) {
+      clearInterval(flowTracerState.timerId);
+      flowTracerState.timerId = null;
+    }
+    setStatus(`⏸ Trace paused at hop ${flowTracerState.hopIndex + 1}/${flowTracerState.hops.length} (click ⏭ to step or ▶ to resume)`);
+  }
+  syncFlowTraceControlsUI();
+  return getFlowTraceState();
+}
+window.toggleSequentialFlowTrace = toggleSequentialFlowTrace;
+
+function stepSequentialFlowTrace() {
+  if (!flowTracerState.active) {
+    const res = startSequentialFlowTrace({ paused: true });
+    if (!res || !res.ok) return res;
+    return getFlowTraceState();
+  }
+  flowTracerState.paused = true;
+  if (flowTracerState.timerId) {
+    clearInterval(flowTracerState.timerId);
+    flowTracerState.timerId = null;
+  }
+  if (flowTracerState.phase === 'transit_in') {
+    const hop = flowTracerState.hops[flowTracerState.hopIndex];
+    applyFlowTracerVisualStep(hop, 'processing', 0.55);
+    setStatus(`⏭ Step: Processing [${hop.inputFile}] in "${hop.toTitle}"...`);
+    renderAll({ preserveInspector: true });
+    syncFlowTraceControlsUI();
+    return getFlowTraceState();
+  }
+  completeCurrentTraceHopAndAdvance(true);
+  return getFlowTraceState();
+}
+window.stepSequentialFlowTrace = stepSequentialFlowTrace;
+
+function stopSequentialFlowTrace(clearStatus = false) {
+  if (flowTracerState && flowTracerState.timerId) {
+    clearInterval(flowTracerState.timerId);
+  }
+  flowTracerState = {
+    active: false,
+    paused: false,
+    speed: (flowTracerState && flowTracerState.speed) || 1.0,
+    hops: [],
+    hopIndex: 0,
+    phase: 'idle',
+    phaseProgress: 0,
+    completedWireIds: new Set(),
+    completedNodeIds: new Set(),
+    activeWireId: '',
+    activeNodeId: '',
+    receivingNodeId: '',
+    activeFileLabel: '',
+    activeOutputLabel: '',
+    updatedBucketMap: {},
+    timerId: null
+  };
+  syncFlowTraceControlsUI();
+  if (!clearStatus) {
+    setStatus('⏹ Flow trace stopped');
+  }
+  if (S && domLayer) renderAll({ preserveInspector: true });
+  return getFlowTraceState();
+}
+window.stopSequentialFlowTrace = stopSequentialFlowTrace;
+
+function setFlowTraceSpeed(rawSpeed) {
+  const num = Number(rawSpeed);
+  const clamped = Number.isFinite(num) ? Math.max(0.25, Math.min(4.0, num)) : 1.0;
+  flowTracerState.speed = clamped;
+  syncFlowTraceControlsUI();
+  setStatus(`⏱️ Flow tracer speed set to ${clamped}x`);
+  return clamped;
+}
+window.setFlowTraceSpeed = setFlowTraceSpeed;
+
+function getFlowTraceState() {
+  return {
+    active: Boolean(flowTracerState.active),
+    paused: Boolean(flowTracerState.paused),
+    speed: flowTracerState.speed,
+    hopIndex: flowTracerState.hopIndex,
+    totalHops: (flowTracerState.hops || []).length,
+    phase: flowTracerState.phase,
+    phaseProgress: flowTracerState.phaseProgress,
+    activeWireId: flowTracerState.activeWireId,
+    activeNodeId: flowTracerState.activeNodeId,
+    receivingNodeId: flowTracerState.receivingNodeId,
+    activeFileLabel: flowTracerState.activeFileLabel,
+    activeOutputLabel: flowTracerState.activeOutputLabel,
+    updatedBuckets: Object.keys(flowTracerState.updatedBucketMap || {})
+  };
+}
+window.getFlowTraceState = getFlowTraceState;
+
+function simulateFlowPulse() {
+  return toggleSequentialFlowTrace();
+}
+window.simulateFlowPulse = simulateFlowPulse;
 
 function escSvgXml(str) {
   return String(str == null ? '' : str)
@@ -7191,6 +8031,7 @@ function loadPresetTemplate(presetKey, forceFactory = false) {
     pruneStandalonePresetDropdown();
     return;
   }
+  if (typeof stopSequentialFlowTrace === 'function') stopSequentialFlowTrace(true);
   invalidateWireRouteCache();
   resetInteractionModes();
   if (normalizedKey === 'blank') {

@@ -1,0 +1,32 @@
+name: Bug Report
+description: Report a UI, workflow saving, offline export, or canvas bug in SandboxWorkflow
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting an issue! Remember **never** to paste private workflows, API keys, or confidential data unless you want them public.
+  - type: input
+    id: version
+    attributes:
+      label: SandboxWorkflow Version
+      description: Shown in the top badge (e.g., v1.8.0, v1.8.1)
+      placeholder: "v1.8.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: How are you running SandboxWorkflow?
+      options:
+        - Downloaded offline HTML (file://)
+        - Local web server (http://)
+        - Built from src/sandbox_workflow/
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce & Expected vs. Actual Behavior
+      placeholder: "1. Load...\n2. Click...\nExpected: ...\nActual: ..."
+    validations:
+      required: true

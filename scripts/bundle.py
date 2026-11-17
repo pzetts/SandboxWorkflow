@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Standalone bundler & verification gate for SandboxWorkflow v1.8.0.
+Standalone bundler & verification gate for SandboxWorkflow v1.8.1.
 
 Reads modular sources from `src/sandbox_workflow/{styles.css,template.html,app.js}`,
 assembles the single-file offline distribution `dist/SandboxWorkflow_v1.8.0.html`
@@ -27,9 +27,9 @@ from typing import Dict, List, Tuple
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_DIR = REPO_ROOT / "src" / "sandbox_workflow"
 DIST_DIR = REPO_ROOT / "dist"
-OUTPUT_FILENAME = "SandboxWorkflow_v1.8.0.html"
+OUTPUT_FILENAME = "SandboxWorkflow_v1.8.1.html"
 INDEX_FILENAME = "index.html"
-PAGE_TITLE = "Sandbox workflow tool — v1.8.0"
+PAGE_TITLE = "Sandbox workflow tool — v1.8.1"
 
 FORBIDDEN_SCAN_TOKENS: Tuple[str, ...] = (
     "http://",
@@ -149,6 +149,7 @@ def assemble_html(styles_css: str, template_html: str, app_js: str) -> str:
         "<head>\n"
         '<meta charset="UTF-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n'
+        '<meta name="color-scheme" content="dark">\n'
         f"<title>{PAGE_TITLE}</title>\n"
         "<style>\n"
         f"{styles_css.rstrip()}\n"
@@ -174,8 +175,8 @@ def verify_manifest_if_present(dist_dir: Path) -> List[str]:
     raw = manifest_path.read_text(encoding="utf-8")
     errors = scan_security_and_leaks(raw, "dist/workflows/manifest.json", check_scan_tokens=True)
     data = json.loads(raw)
-    if data.get("version") != "1.8.0":
-        errors.append(f"dist/workflows/manifest.json: expected version '1.8.0', got {data.get('version')!r}")
+    if data.get("version") not in ("1.8.0", "1.8.1"):
+        errors.append(f"dist/workflows/manifest.json: expected version '1.8.0' or '1.8.1', got {data.get('version')!r}")
     workflows = data.get("workflows")
     if not isinstance(workflows, list) or not workflows:
         errors.append("dist/workflows/manifest.json: 'workflows' must be a non-empty list")
@@ -267,7 +268,7 @@ def build_bundle(*, write: bool = True, repo_root: Path = REPO_ROOT) -> Tuple[st
 
 
 def main(argv: List[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Bundle and verify SandboxWorkflow v1.8.0.")
+    parser = argparse.ArgumentParser(description="Bundle and verify SandboxWorkflow v1.8.1.")
     parser.add_argument(
         "--check",
         action="store_true",
