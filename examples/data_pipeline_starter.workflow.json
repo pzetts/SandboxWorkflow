@@ -1,0 +1,431 @@
+{
+  "workflowId": "data_pipeline_starter",
+  "title": "Data Pipeline Starter (CSV & JSON Validation)",
+  "workflowStatus": "active",
+  "wireStyle": "schematic",
+  "wireSelectMode": false,
+  "wireDeleteMode": false,
+  "activeBrushColor": "#38bdf8",
+  "lockLayout": true,
+  "hideLeftPalette": false,
+  "fullScreenView": false,
+  "panX": 40,
+  "panY": 80,
+  "zoom": 0.85,
+  "categories": [
+    {
+      "id": "cat_ingest",
+      "title": "Stage 1: Data Ingestion & Validation",
+      "color": "#38bdf8",
+      "inPorts": [
+        "source_uri"
+      ],
+      "outPorts": [
+        "clean_records"
+      ],
+      "bottomPorts": [
+        "ingest_telemetry"
+      ],
+      "notes": [
+        "Parses raw CSV and JSON batch inputs",
+        "Enforces schema types before downstream transformation"
+      ],
+      "collapsed": false,
+      "x": 380,
+      "y": 50,
+      "w": 660,
+      "h": 420,
+      "collapsedSections": {}
+    }
+  ],
+  "subcategories": [
+    {
+      "id": "sub_transform",
+      "title": "Stage 2: Transform & Aggregate",
+      "color": "#14b8a6",
+      "inPorts": [
+        "records_in"
+      ],
+      "outPorts": [
+        "metrics_out"
+      ],
+      "bottomPorts": [
+        "transform_tap"
+      ],
+      "notes": [
+        "Normalizes fields and computes summary rollups"
+      ],
+      "collapsed": false,
+      "x": 1150,
+      "y": 60,
+      "w": 360,
+      "h": 380,
+      "collapsedSections": {}
+    }
+  ],
+  "cells": [
+    {
+      "id": "cell_qa",
+      "title": "QA Gate: Schema & Null Check",
+      "color": "#f59e0b",
+      "status": "ready",
+      "inPorts": [
+        "candidate_in"
+      ],
+      "outPorts": [
+        "approved_out"
+      ],
+      "bottomPorts": [
+        "qa_bus"
+      ],
+      "notes": [
+        "[x] Required columns present",
+        "[x] Zero null numeric metrics"
+      ],
+      "collapsed": false,
+      "x": 1150,
+      "y": 500,
+      "w": 360,
+      "h": 195,
+      "collapsedSections": {}
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_csv_load",
+      "title": "📥 1. Load Raw CSV / JSON",
+      "category": "Input Stage",
+      "color": "#38bdf8",
+      "inPorts": [
+        "raw_files"
+      ],
+      "outPorts": [
+        "raw_rows"
+      ],
+      "inputSpec": "orders_sample.csv, customers_schema.json",
+      "outputSpec": "Parsed row stream",
+      "steps": [
+        "Read UTF-8 CSV and JSON inputs",
+        "Attach row line numbers for audit traceability"
+      ],
+      "params": {
+        "encoding": "utf-8",
+        "batch_size": 500
+      },
+      "notes": [
+        "Deterministic batch loader"
+      ],
+      "scriptBinding": "modules/data_loader.py",
+      "x": 405,
+      "y": 210,
+      "w": 270,
+      "h": 225,
+      "collapsedSections": {},
+      "_parentContId": "cat_ingest"
+    },
+    {
+      "id": "n_schema_validate",
+      "title": "🔍 2. Validate Schema",
+      "category": "Validation",
+      "color": "#10b981",
+      "inPorts": [
+        "rows_in"
+      ],
+      "outPorts": [
+        "valid_rows",
+        "error_report"
+      ],
+      "inputSpec": "Parsed row stream",
+      "outputSpec": "Type-checked clean rows + reject log",
+      "steps": [
+        "Check required fields and numeric ranges",
+        "Route malformed records to reject log"
+      ],
+      "params": {
+        "strict": true,
+        "allow_extra_keys": false
+      },
+      "notes": [
+        "Zero-mutation validation pass"
+      ],
+      "scriptBinding": "modules/quality_filter.py",
+      "x": 735,
+      "y": 210,
+      "w": 275,
+      "h": 235,
+      "collapsedSections": {},
+      "_parentContId": "cat_ingest"
+    },
+    {
+      "id": "n_normalize",
+      "title": "⚙️ 3. Normalize & Aggregate",
+      "category": "Processor",
+      "color": "#14b8a6",
+      "inPorts": [
+        "clean_rows"
+      ],
+      "outPorts": [
+        "summary_table"
+      ],
+      "inputSpec": "Validated rows",
+      "outputSpec": "Aggregated KPI summary JSON",
+      "steps": [
+        "Normalize timestamps to ISO-8601 UTC",
+        "Compute per-category totals and counts"
+      ],
+      "params": {
+        "timezone": "UTC",
+        "precision": 4
+      },
+      "notes": [
+        "Produces reproducible summary tables"
+      ],
+      "scriptBinding": "modules/metrics_aggregator.py",
+      "x": 1185,
+      "y": 210,
+      "w": 290,
+      "h": 210,
+      "collapsedSections": {},
+      "_parentContId": "sub_transform"
+    },
+    {
+      "id": "n_report",
+      "title": "📑 4. Build Output Report",
+      "category": "Formatter",
+      "color": "#a855f7",
+      "inPorts": [
+        "summary_in"
+      ],
+      "outPorts": [
+        "report_bundle"
+      ],
+      "inputSpec": "Approved summary metrics",
+      "outputSpec": "validation_report.html + summary_metrics.csv",
+      "steps": [
+        "Render static HTML summary table",
+        "Export CSV metrics artifact"
+      ],
+      "params": {
+        "format": "html+csv"
+      },
+      "notes": [
+        "Self-contained report output"
+      ],
+      "scriptBinding": "modules/report_builder.py",
+      "x": 1930,
+      "y": 200,
+      "w": 275,
+      "h": 215,
+      "collapsedSections": {}
+    }
+  ],
+  "fileContainers": [
+    {
+      "id": "fc_raw_input",
+      "title": "Raw Input Files",
+      "pattern": "*.csv, *.json",
+      "inPorts": [
+        "files_in"
+      ],
+      "outPorts": [
+        "files_out"
+      ],
+      "files": [
+        "orders_sample.csv",
+        "customers_schema.json"
+      ],
+      "x": 50,
+      "y": 170,
+      "w": 250,
+      "h": 220,
+      "collapsedSections": {},
+      "filter": "*.csv, *.json"
+    },
+    {
+      "id": "fc_final_reports",
+      "title": "Published Reports",
+      "pattern": "*.html, *.csv",
+      "inPorts": [
+        "files_in"
+      ],
+      "outPorts": [
+        "files_out"
+      ],
+      "files": [
+        "summary_metrics.csv",
+        "validation_report.html"
+      ],
+      "x": 2290,
+      "y": 180,
+      "w": 260,
+      "h": 225,
+      "collapsedSections": {},
+      "filter": "*.html, *.csv"
+    }
+  ],
+  "buses": [
+    {
+      "id": "bus_pipeline",
+      "title": "⚡ Distribution Bus",
+      "orientation": "left-right",
+      "inPorts": [
+        "primary_in",
+        "qa_signal"
+      ],
+      "outPorts": [
+        "to_report",
+        "to_archive"
+      ],
+      "bottomPorts": [
+        "bus_tap"
+      ],
+      "notes": [
+        "Coordinates validated stream and QA gate signal"
+      ],
+      "x": 1600,
+      "y": 230,
+      "w": 250,
+      "h": 195
+    }
+  ],
+  "stickyNotes": [
+    {
+      "id": "sticky_starter_tip",
+      "title": "Quick Tip: Black-Box Mode",
+      "color": "yellow",
+      "assignee": "both",
+      "attachedToId": "cat_ingest",
+      "attachedToIds": [
+        "cat_ingest"
+      ],
+      "tetherIds": [
+        "cat_ingest"
+      ],
+      "text": "Click [-] on Stage 1 to collapse it into a single Black-Box Subsystem, or click Edit to customize ports and colors.",
+      "todos": [
+        {
+          "id": "td_starter_1",
+          "text": "Try Select Wires mode to inspect edges",
+          "done": true
+        },
+        {
+          "id": "td_starter_2",
+          "text": "Click + New Blank to sketch a fresh graph",
+          "done": false
+        }
+      ],
+      "images": [],
+      "x": 50,
+      "y": 460,
+      "w": 270,
+      "h": 230
+    }
+  ],
+  "wires": [
+    {
+      "id": "w_dp_1",
+      "fromNode": "fc_raw_input",
+      "fromPort": "files_out",
+      "toNode": "cat_ingest",
+      "toPort": "source_uri",
+      "color": "#38bdf8"
+    },
+    {
+      "id": "w_dp_2",
+      "fromNode": "cat_ingest",
+      "fromPort": "source_uri",
+      "fromDir": "in",
+      "toNode": "n_csv_load",
+      "toPort": "raw_files",
+      "toDir": "in",
+      "color": "#38bdf8"
+    },
+    {
+      "id": "w_dp_3",
+      "fromNode": "n_csv_load",
+      "fromPort": "raw_rows",
+      "toNode": "n_schema_validate",
+      "toPort": "rows_in",
+      "color": "#10b981"
+    },
+    {
+      "id": "w_dp_4",
+      "fromNode": "n_schema_validate",
+      "fromPort": "valid_rows",
+      "fromDir": "out",
+      "toNode": "cat_ingest",
+      "toPort": "clean_records",
+      "toDir": "out",
+      "color": "#10b981"
+    },
+    {
+      "id": "w_dp_5",
+      "fromNode": "cat_ingest",
+      "fromPort": "clean_records",
+      "toNode": "sub_transform",
+      "toPort": "records_in",
+      "color": "#14b8a6"
+    },
+    {
+      "id": "w_dp_6",
+      "fromNode": "sub_transform",
+      "fromPort": "records_in",
+      "fromDir": "in",
+      "toNode": "n_normalize",
+      "toPort": "clean_rows",
+      "toDir": "in",
+      "color": "#14b8a6"
+    },
+    {
+      "id": "w_dp_7",
+      "fromNode": "n_normalize",
+      "fromPort": "summary_table",
+      "fromDir": "out",
+      "toNode": "sub_transform",
+      "toPort": "metrics_out",
+      "toDir": "out",
+      "color": "#14b8a6"
+    },
+    {
+      "id": "w_dp_8",
+      "fromNode": "sub_transform",
+      "fromPort": "metrics_out",
+      "toNode": "cell_qa",
+      "toPort": "candidate_in",
+      "color": "#f59e0b"
+    },
+    {
+      "id": "w_dp_9",
+      "fromNode": "sub_transform",
+      "fromPort": "metrics_out",
+      "toNode": "bus_pipeline",
+      "toPort": "primary_in",
+      "color": "#14b8a6"
+    },
+    {
+      "id": "w_dp_10",
+      "fromNode": "cell_qa",
+      "fromPort": "approved_out",
+      "toNode": "bus_pipeline",
+      "toPort": "qa_signal",
+      "color": "#f59e0b"
+    },
+    {
+      "id": "w_dp_11",
+      "fromNode": "bus_pipeline",
+      "fromPort": "to_report",
+      "toNode": "n_report",
+      "toPort": "summary_in",
+      "color": "#a855f7"
+    },
+    {
+      "id": "w_dp_12",
+      "fromNode": "n_report",
+      "fromPort": "report_bundle",
+      "toNode": "fc_final_reports",
+      "toPort": "files_in",
+      "color": "#10b981"
+    }
+  ],
+  "notes": "Generic public starter workflow demonstrating containers, bulkhead wiring, buses, and file buckets."
+}

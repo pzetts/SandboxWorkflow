@@ -1,0 +1,17 @@
+{
+  "version": "1.8.0",
+  "workflows": [
+    {
+      "id": "data_pipeline_starter",
+      "title": "Data Pipeline Starter (CSV & JSON Validation)",
+      "status": "active",
+      "url": "./workflows/data_pipeline_starter.workflow.json"
+    },
+    {
+      "id": "etl_multi_stage_demo",
+      "title": "ETL Multi-Stage Demo (Black-Box Subsystems & AI Query)",
+      "status": "active",
+      "url": "./workflows/etl_multi_stage_demo.workflow.json"
+    }
+  ]
+}

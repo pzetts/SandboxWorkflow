@@ -1,0 +1,417 @@
+<body>
+<header class="topbar">
+  <div class="brand" title="Sandbox workflow tool — v1.8.0">
+    <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#dbbc7f" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+    <span style="font-weight:700;font-size:12.5px;white-space:nowrap;">Sandbox workflow tool</span>
+    <span class="badge" id="modeBadge" title="Offline Standalone Visual Workflow Studio">v1.8.0</span>
+    <span class="badge" id="engineVersionBadge" style="display:none;">Engine: SandboxWorkflow v1.8.0</span>
+  </div>
+
+  <div class="top-controls">
+    <div class="tb-group tb-group-primary" title="Workflow Selection, Filter &amp; Lifecycle Mode">
+      <select id="workflowStatusFilter" onchange="filterWorkflowDropdown()" title="Filter workflows by Active vs. Under Construction status" style="padding:2px 5px;font-size:10.5px;max-width:80px;">
+        <option value="all">All</option>
+        <option value="active">🟢 Active</option>
+        <option value="construction">🚧 Editing</option>
+      </select>
+      <input type="text" id="workflowSearchFilter" oninput="filterWorkflowDropdown()" placeholder="🔎" title="Filter workflow dropdown list by keyword" style="width:52px;padding:2px 5px;font-size:10.5px;">
+      <select id="presetSelect" aria-label="Select workflow" onchange="loadPresetTemplate(this.value)" title="Select Active or Under-Construction Workflow">
+        <option value="example" selected>🧪 Example Workflow (Order &amp; Packaging Pipeline)</option>
+        <option value="hello_world" data-wf-status="construction">👋 Hello World (Minimal 2-Node Starter)</option>
+        <option value="algorithm" data-wf-status="active">⚙️ Algorithm Pipeline (Sample Processing &amp; Validation)</option>
+        <option value="blank" data-wf-status="construction">📄 Blank Workflow (Start from Scratch)</option>
+      </select>
+      <span id="workflowSelect" style="display:none;"></span>
+      <span id="workflowStatusSelect" style="display:none;"></span>
+      <span id="btnSaveWorkflowToDropdown" style="display:none;"></span>
+      <span id="saveWorkflowBtn" style="display:none;"></span>
+      <span id="btnSnapshotAndDraw" style="display:none;"></span>
+      <button id="newBlankWorkflowBtn" type="button" class="tb-svg-btn" onclick="createNewBlankWorkflow()" title="📄 New Blank — Start a new unlocked blank workflow without overwriting existing presets" style="background:rgba(167,192,128,0.18);border-color:var(--accent);color:#ecfccb;font-weight:700;">
+        <svg aria-hidden="true" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+        <span class="btn-lbl">+ New Blank</span>
+      </button>
+      <button id="saveToDropdownBtn" class="tb-svg-btn" onclick="saveCurrentWorkflowInPlace()" title="💾 Save — Save current workflow in-place (LocalStorage + Optional HTTP Sync + Active Disk File Handle)" style="background:rgba(56,189,248,0.18);border-color:#38bdf8;color:#e0f2fe;font-weight:700;">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+        <span class="btn-lbl">Save</span>
+      </button>
+      <button id="saveAsWorkflowBtn" class="tb-svg-btn" onclick="saveWorkflowAsNewFileAndPreset()" title="📄 Save As... — Open native Windows Explorer Save As dialog (.json) AND fork a new workflow entry in the dropdown without overwriting the original preset" style="background:rgba(168,85,247,0.2);border-color:#c084fc;color:#f3e8ff;font-weight:700;">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+        <span class="btn-lbl">Save As...</span>
+      </button>
+      <button type="button" id="openWorkflowFileBtn" class="tb-svg-btn" onclick="openWorkflowFromNativeFilePicker()" title="📂 Open... — Open a .json workflow file from disk and add/select it in the dropdown" style="background:rgba(234,179,8,0.18);border-color:#facc15;color:#fef08a;font-weight:700;">
+        <svg aria-hidden="true" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+        <span class="btn-lbl">Open...</span>
+      </button>
+      <button type="button" id="openWorkflowFolderBtn" class="tb-svg-btn" onclick="openWorkflowFolderPicker()" title="📂 Sync Folder — Import a local folder of .json workflows or manifest.json completely offline" style="background:rgba(56,189,248,0.16);border-color:#38bdf8;color:#bae6fd;font-weight:700;">
+        <svg aria-hidden="true" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path><path d="M12 11v6"></path><path d="m9 14 3-3 3 3"></path></svg>
+        <span class="btn-lbl">Sync Folder</span>
+      </button>
+      <input type="file" id="workflowFolderInput" webkitdirectory directory multiple accept=".json" style="display:none" aria-label="Import workflow JSON folder" onchange="loadWorkflowFolderFiles(event)">
+      <span id="autoSaveStatusPill" aria-live="polite" title="Local Auto-Save &amp; Optional Sync Status" style="display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:999px;background:rgba(16,185,129,0.16);border:1px solid rgba(16,185,129,0.48);color:#6ee7b7;font-family:Consolas,monospace;font-size:10px;font-weight:700;white-space:nowrap;">🟢 Ready</span>
+    </div>
+
+    <div class="tb-group" title="Quick Presets, Sticky Notes &amp; Markup Snapshot">
+      <button id="addStickyNoteBtn" class="tb-svg-btn" onclick="addStickyNote()" title="📝 Add Sticky Note — Attachable reminder note with freeform text, interactive To-Do checklist &amp; Ctrl+V pasted PNGs" style="background:rgba(250,204,21,0.2);border-color:#eab308;color:#fef08a;font-weight:700;">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z"></path><path d="M15 3v6h6"></path><line x1="9" y1="13" x2="15" y2="13"></line><line x1="9" y1="17" x2="13" y2="17"></line></svg>
+        <span class="btn-lbl">+ Sticky</span>
+      </button>
+      <button type="button" id="snapshotCanvasBtn" class="tb-svg-btn" onclick="openSnapshotAndDrawModal()" title="📸 Snapshot &amp; Draw — Capture workflow schematic + sticky notes into markup modal to draw freehand or Copy to Clipboard" style="background:rgba(16,185,129,0.22);border-color:#10b981;color:#a7f3d0;font-weight:700;">
+        <svg aria-hidden="true" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+        <span class="btn-lbl">Snap</span>
+      </button>
+      <button type="button" id="loadDemoBtn" class="tb-svg-btn" onclick="loadPresetTemplate('example')" title="🧪 Load Example Workflow Demo (All Elements &amp; Connectors)">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.31"></path><path d="M14 9.3V1.99"></path><path d="M8.5 2h7"></path><path d="M14 9.3a6.5 6.5 0 1 1-4 0"></path></svg>
+        <span class="btn-lbl">Demo</span>
+      </button>
+    </div>
+
+    <div class="tb-group" title="Workflow Lifecycle: Clone, Construction Edit, Go Live &amp; Revert">
+      <button id="btnCloneWorkflow" class="tb-svg-btn" onclick="cloneCurrentWorkflow()" title="📋 Clone — Clone current workflow into a new Under Construction copy">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      </button>
+      <button id="btnTakeIntoConstruction" class="tb-svg-btn" onclick="enterConstructionMode('manual button')" title="🚧 Construction — Unlock and take workflow into Under Construction mode (preserves baseline for Revert)" style="background:rgba(250,204,21,0.16);border-color:#facc15;color:#fef08a;font-weight:700;">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
+        <span class="btn-lbl">Edit</span>
+      </button>
+      <button id="btnGoLiveWorkflow" class="tb-svg-btn" onclick="goLiveWorkflow()" title="🚀 Go Live — Promote workflow to Active (Go Live), remove construction border, show caution badge, and lock in View Mode" style="background:rgba(16,185,129,0.2);border-color:#10b981;color:#a7f3d0;font-weight:700;">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+        <span class="btn-lbl">Live</span>
+      </button>
+      <button id="btnRevertWorkflow" class="tb-svg-btn" onclick="revertWorkflowToOriginal()" title="↩️ Revert to Original — Revert all construction changes back to the original baseline workflow snapshot" style="background:rgba(244,63,94,0.16);border-color:#f43f5e;color:#fecdd3;font-weight:600;">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"></path><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"></path></svg>
+      </button>
+    </div>
+
+    <div class="tb-group" title="Execution, Collapsible Lists, Wire Routing &amp; Viewport Controls">
+      <button id="btnRunFlowPulse" class="btn-primary tb-svg-btn" onclick="simulateFlowPulse()" title="▶ Simulate / Run Flow Pulse across pipeline wires">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+      </button>
+      <button id="btnToggleAllLongLists" class="tb-svg-btn" onclick="toggleAllLongListsCollapse()" title="↕ Collapse / Expand All Long Lists, Rules, Sub-Steps &amp; File Containers (Auto-Fits Containers to Fit)">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 15 5 5 5-5"></path><path d="m7 9 5-5 5 5"></path></svg>
+        <span class="btn-lbl">Lists ▾</span>
+      </button>
+      <select id="wireStyleSelect" onchange="setWireStyle(this.value)" title="Select Wire Routing &amp; Pulsing Flow Style" style="max-width:98px;padding:2px 4px;font-size:10.5px;">
+        <option value="schematic">📐 Schematic</option>
+        <option value="schematic_pulse">⚡ Pulse Schem</option>
+        <option value="flow">🌊 Bezier Pulse</option>
+        <option value="ortho_pulse">⚡ Ortho Pulse</option>
+        <option value="subway_pulse">🚇 Subway</option>
+        <option value="bezier">〰️ Bezier</option>
+      </select>
+      <button id="wireStyleToggle" class="tb-svg-btn" onclick="toggleWireStyle()" title="📐 Cycle Wire Style (Orthogonal Electrical Schematic / Pulsing / Bezier)">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h6v12h6"></path><circle cx="4" cy="6" r="2"></circle><circle cx="16" cy="18" r="2"></circle></svg>
+      </button>
+      <button id="btnToggleLeftPalette" class="tb-svg-btn" onclick="toggleLeftSidebar()" title="◀ Hide Palette / ▶ Show Left Palette Sidebar">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line></svg>
+        <span class="btn-lbl">Palette</span>
+      </button>
+      <button id="btnLockLayout" class="tb-svg-btn" onclick="toggleLockLayout()" title="🔓 Lock Layout (Pan Only) — Lock node positions so dragging anywhere pans the canvas">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+        <span class="btn-lbl">Lock</span>
+      </button>
+      <button class="tb-svg-btn" onclick="fitViewToAll()" title="🔎 Fit All — Zoom &amp; pan so the entire workflow fits in view">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+      </button>
+      <button id="btnResetZoom" class="tb-svg-btn" onclick="resetViewport()" title="🔍 100% Zoom — Click to reset zoom &amp; pan to 100%">
+        <span class="btn-lbl">100%</span>
+      </button>
+      <button id="btnFullScreenView" class="tb-svg-btn" onclick="toggleFullScreenView()" title="⛶ Full Screen — Hide both sidebars for clean full-screen diagram view">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
+        <span class="btn-lbl">Full</span>
+      </button>
+      <button id="btnDeselectAll" class="tb-svg-btn" onclick="deselectAll()" title="⬜ Deselect — Deselect all &amp; hide right inspector [Esc]">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="4 2"></rect></svg>
+      </button>
+    </div>
+
+    <div class="tb-group" title="Safe Connector Modes &amp; Element Color Tools">
+      <button id="btnToggleSelectWires" class="tb-svg-btn" onclick="toggleSelectWiresMode()" aria-pressed="false" title="🔌 Select Connectors / Wires Mode (Default OFF) — Click wires to inspect &amp; color without deleting">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6 4 4 6-6"></path><circle cx="4" cy="17" r="2"></circle><circle cx="20" cy="9" r="2"></circle></svg>
+        <span class="btn-lbl">Sel Wires</span>
+      </button>
+      <button id="btnToggleDeleteWires" class="tb-svg-btn" onclick="toggleDeleteWiresMode()" aria-pressed="false" title="✂️ Delete Connectors / Wires Mode (Default OFF) — Click wires to delete them safely">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><line x1="20" y1="4" x2="8.12" y2="15.88"></line><line x1="14.47" y1="14.48" x2="20" y2="20"></line><line x1="8.12" y1="8.12" x2="12" y2="12"></line></svg>
+        <span class="btn-lbl">Del Wires</span>
+      </button>
+      <button id="btnHoneycombPalette" class="tb-svg-btn" onclick="toggleHoneycombPopover(event)" title="⬡ Honeycomb Color Palette — Apply curated hex swatches to selected elements or connectors">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 20 7 20 17 12 22 4 17 4 7"></polygon></svg>
+        <span class="btn-lbl">Colors</span>
+      </button>
+      <button id="btnFullSpectrumRect" type="button" onclick="openFullSpectrumColorModal(event)" title="🌈 Full-Spectrum Color Picker — Open 2D Saturation/Value + 360° Hue Picker" aria-label="Full-Spectrum Color Picker"></button>
+      <button id="btnFormatPainter" class="tb-svg-btn" onclick="toggleFormatPainter()" aria-pressed="false" title="🖌️ Format Painter — Copy selected item/wire color and click nodes, containers, stickies, or wires to paint [Esc exits]">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="14" height="6" rx="1"></rect><path d="M17 6h2a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-7v4"></path><rect x="10" y="16" width="4" height="5" rx="1"></rect></svg>
+        <span class="btn-lbl">Painter</span>
+      </button>
+    </div>
+
+    <div class="tb-group" title="Save, Load, Offline Standalone HTML Export &amp; Printable Schematic">
+      <button id="exportOfflineHtmlBtn" class="tb-svg-btn" onclick="exportOfflineStandaloneHtml()" title="📦 Export Offline Standalone HTML — Download 100% self-contained offline SandboxWorkflow HTML with current layout, sticky notes &amp; embedded images baked in" style="background:rgba(167,192,128,0.2);border-color:var(--accent);color:#ecfccb;font-weight:700;">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        <span class="btn-lbl">Offline</span>
+      </button>
+      <details id="ioMenuDropdown" class="io-dropdown-menu">
+        <summary class="tb-svg-btn" title="💾 Save / 📂 Load Workflow JSON, 📦 Export Offline Standalone HTML, 📐 Printable Schematic SVG &amp; 🧹 Clear Canvas">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg>
+          <span>I/O ▾</span>
+        </summary>
+        <div class="io-dropdown-panel">
+          <button id="btnIoNewBlankWorkflow" type="button" onclick="createNewBlankWorkflow(); document.getElementById('ioMenuDropdown').removeAttribute('open');" title="Start a new unlocked blank workflow without overwriting saved presets">📄 New Blank Workflow</button>
+          <button id="btnSaveWorkflowJson" class="btn-primary" onclick="exportWorkflowJson()" title="Save current workflow state to a local .json file">💾 Save Workflow JSON (.json)</button>
+          <button id="btnLoadWorkflowJson" onclick="document.getElementById('jsonFileInput').click()" title="Load a workflow .json file from disk">📂 Load Workflow JSON (.json)</button>
+          <input type="file" id="jsonFileInput" accept=".json" style="display:none" onchange="loadWorkflowJsonFile(event)">
+          <button id="btnExportStandaloneHtml" class="btn-export" onclick="exportOfflineStandaloneHtml()" title="Export self-contained offline standalone HTML file with presets &amp; sticky notes baked in">📦 Export Standalone HTML (Offline)</button>
+          <button id="btnPrintableSchematicSvg" class="btn-export" style="background:rgba(2,132,199,0.22);border-color:#38bdf8;color:#e0f2fe;" onclick="openPrintableSchematicSvgSheet()" title="Open 1-Page White-Canvas Electrical Schematic SVG Sheet (or export live schematic SVG)">📐 Printable Schematic SVG</button>
+          <button id="btnExportLiveCanvasSvg" onclick="exportWorkflowAsPrintableSchematicSvg(true)" title="Export current workflow canvas as a single-page white-background electrical schematic .svg for hand sketching">🖨️ Export Live Canvas SVG</button>
+          <button onclick="clearSandboxCanvas()" title="🧹 Clear Canvas — Remove all elements from the canvas">🧹 Clear Canvas</button>
+        </div>
+      </details>
+      <button type="button" id="btnTopbarSchematic" class="tb-svg-btn" onclick="openPrintableSchematicSvgSheet()" style="background:rgba(2,132,199,0.24);border-color:#38bdf8;color:#e0f2fe;font-weight:700;" title="📐 Schematic View — Export 1-Page White-Canvas Printable Electrical Schematic SVG">
+        <svg aria-hidden="true" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"></polygon><line x1="9" y1="3" x2="9" y2="18"></line><line x1="15" y1="6" x2="15" y2="21"></line></svg>
+      </button>
+      <button id="btnHotkeyHelp" onclick="toggleHotkeyHelpPopover(event)" title="Canvas Hotkeys &amp; Mouse Controls [?]" aria-label="Canvas Hotkeys &amp; Mouse Controls">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9.5"></circle>
+          <path d="M9.2 9.2a3 3 0 0 1 5.6 1.4c0 1.8-2.8 2.2-2.8 4"></path>
+          <circle cx="12" cy="17.4" r="0.8" fill="currentColor"></circle>
+        </svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="hotkey-help-popover" id="hotkeyHelpPopover" role="dialog" aria-label="Canvas Hotkeys & Mouse Controls">
+  <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:2px;">
+    <strong style="color:var(--aqua);font-size:12px;">⌨️ Canvas Hotkeys &amp; Mouse Controls (Sandbox workflow tool v1.8.0)</strong>
+    <button class="hdr-mini-btn" onclick="toggleHotkeyHelpPopover(event, false)" title="Close Hotkeys Help [Esc]">✕</button>
+  </div>
+  <div class="hotkey-row"><span class="hotkey-kbd">🔍 Alt + Left-Click</span><span>Zoom In (+25% at cursor)</span></div>
+  <div class="hotkey-row"><span class="hotkey-kbd">🔍 Alt + Right-Click / Shift+Click</span><span>Zoom Out (-20% at cursor)</span></div>
+  <div class="hotkey-row"><span class="hotkey-kbd">🔍 Alt + Drag Up/Right or Down/Left</span><span>Smooth Scrub-Zoom (12%–300%)</span></div>
+  <div class="hotkey-row"><span class="hotkey-kbd">🔍 Mouse Wheel</span><span>Smooth Zoom at Cursor</span></div>
+  <div class="hotkey-row"><span class="hotkey-kbd">🖐️ Ctrl + Left-Click &amp; Drag</span><span>Pan Canvas Anywhere (even over nodes)</span></div>
+  <div class="hotkey-row"><span class="hotkey-kbd">🖐️ Ctrl + Mouse Wheel / Trackpad</span><span>Pan Horizontally / Vertically</span></div>
+  <div class="hotkey-row"><span class="hotkey-kbd">🔌 Click Port ● → Click Port ●</span><span>Connect Wire (or Drag ● → ●)</span></div>
+  <div class="hotkey-row"><span class="hotkey-kbd">📝 Ctrl + V (Clipboard PNG)</span><span>Paste Screenshot onto Sticky Note</span></div>
+  <div class="hotkey-row"><span class="hotkey-kbd">📦 [–] / [+] on Container Header</span><span>Collapse / Expand Black-Box Subsystem</span></div>
+  <div class="hotkey-row"><span class="hotkey-kbd">⬜ Click Empty Canvas or Esc</span><span>Deselect All &amp; Hide Right Inspector</span></div>
+  <div class="hotkey-row"><span class="hotkey-kbd">◀ ◀ Hide Palette</span><span>Toggle Left Sidebar</span></div>
+  <div class="hotkey-row"><span class="hotkey-kbd">⛶ ⛶ Full Screen</span><span>Hide Both Sidebars</span></div>
+  <div class="hotkey-row"><span class="hotkey-kbd">🗑️ Delete / Backspace</span><span>Delete Selected Element</span></div>
+</div>
+
+<div class="main-layout workspace">
+  <aside class="left-palette" id="leftSidebar">
+    <div class="sec-hdr">1. Structural Containers (Black-Box I/O)</div>
+    <button class="spawn-btn" onclick="spawnCategoryContainer()"><span>📁 + Category Container</span><small>Notes + I/O</small></button>
+    <button class="spawn-btn" onclick="spawnSubcategoryContainer()"><span>📂 + Subcategory Container</span><small>Notes + I/O</small></button>
+    <button class="spawn-btn" onclick="spawnCellSlot()"><span>🧱 + Cell / Grid Slot</span><small>Notes + I/O</small></button>
+
+    <div class="sec-hdr">2. Nodes, Buckets &amp; Electrical Bus Bar</div>
+    <span id="spawnEmptyNodeBtn" style="display:none;"></span>
+    <span id="btnSpawnEmptyNode" style="display:none;"></span>
+    <button id="btnSpawnIdeaNode" class="spawn-btn" onclick="addNode('empty')" title="Add a generic Empty Node to the canvas" style="border-color:rgba(245,158,11,0.5);background:rgba(245,158,11,0.12);"><span style="display:inline-flex;align-items:center;gap:5px;"><svg aria-hidden="true" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>Empty Node</span><small>Generic</small></button>
+    <button id="btnSpawnStickyNote" class="spawn-btn" onclick="addStickyNote()" title="Add a Sticky Note with freeform text, interactive To-Do checklist, pasted images &amp; node attachment" style="border-color:rgba(250,204,21,0.55);background:rgba(250,204,21,0.14);"><span>+ 📝 Sticky Note</span><small>To-Do + Paste PNG</small></button>
+    <button id="btnSpawnExternalInNode" class="spawn-btn" onclick="spawnExternalInNode()" style="border-color:rgba(56,189,248,0.45);background:rgba(56,189,248,0.1);"><span>+ 📥 Upstream Workflow</span><small>External In</small></button>
+    <button id="btnSpawnExternalOutNode" class="spawn-btn" onclick="spawnExternalOutNode()" style="border-color:rgba(16,185,129,0.45);background:rgba(16,185,129,0.1);"><span>+ 📤 Downstream Workflow</span><small>External Out</small></button>
+    <button class="spawn-btn" onclick="spawnAlgorithmNode()"><span>⚙️ + Processing / Algorithm Node</span><small>Custom</small></button>
+    <button type="button" id="btnSpawnLlmQueryNode" class="spawn-btn" onclick="addNode('llm_query')" title="Add an LLM / AI Query Node (Local Ollama, Gemini, OpenAI, Custom Endpoint)" style="border-color:rgba(168,85,247,0.55);background:rgba(168,85,247,0.14);"><span>+ 🤖 LLM / AI Query Node</span><small>Ollama / Endpoint</small></button>
+    <button class="spawn-btn" onclick="spawnFileContainer()"><span>🗄️ + File Container Block</span><small>Bucket</small></button>
+    <button class="spawn-btn" onclick="spawnBusNode()"><span>⚡ + Bus Bar</span><small>Left→Right</small></button>
+
+    <div class="sec-hdr">3. Standard Process &amp; Utility Nodes</div>
+    <details id="utilityNodesDropdown" style="background:rgba(0,0,0,0.22);border:1px solid var(--border);border-radius:6px;padding:6px;">
+      <summary style="cursor:pointer;font-size:11px;font-weight:700;color:var(--aqua);">🧰 Browse 6 Standard Utility Nodes (Click to Expand)</summary>
+      <div style="display:flex;gap:4px;margin:6px 0;">
+        <select id="utilityNodesSelect" style="flex:1;font-size:11px;"></select>
+        <button onclick="spawnSelectedUtilityNode()" style="padding:4px 8px;font-size:11px;">+ Spawn</button>
+      </div>
+      <div class="app-grid" id="utilityNodePicker"></div>
+    </details>
+
+    <div class="sec-hdr">4. 🧩 Custom User Nodes</div>
+    <div style="display:flex;flex-direction:column;gap:6px;background:rgba(0,0,0,0.22);border:1px solid var(--border);border-radius:6px;padding:7px;">
+      <button class="btn-primary" style="width:100%;font-size:11px;" onclick="toggleCustomNodeCreator()">+ New Custom Node</button>
+      <div id="customNodeCreatorBox" style="display:none;flex-direction:column;gap:5px;margin-top:4px;">
+        <input type="text" id="custNodeTitle" placeholder="Node Title (e.g. Custom Audio Filter)" style="font-size:11px;">
+        <input type="text" id="custNodeCat" placeholder="Badge (e.g. User Node)" value="Custom" style="font-size:11px;">
+        <input type="text" id="custNodeIn" placeholder="In ports (comma-sep)" value="in_data, config" style="font-size:11px;">
+        <input type="text" id="custNodeOut" placeholder="Out ports (comma-sep)" value="out_data, report" style="font-size:11px;">
+        <input type="text" id="custNodeNotes" placeholder="Notes (optional)" value="User custom node" style="font-size:11px;">
+        <button class="btn-export" style="font-size:11px;" onclick="saveCustomNodeTemplate()">💾 Save Custom Node Template</button>
+      </div>
+      <div id="customNodesPaletteList" style="display:flex;flex-direction:column;gap:4px;"></div>
+    </div>
+
+    <div class="sec-hdr">5. Canvas Shortcuts</div>
+    <div style="font-size:11px;color:var(--fg1);line-height:1.45;">
+      • <b>Click Dot 1 → Click Dot 2</b> (or Drag ● → ●): Connect wire<br>
+      • <b>[–] / [+] on Container</b>: Collapse to Black-Box Subsystem<br>
+      • <b>Click Empty Canvas / Esc</b>: Deselect &amp; hide right panel<br>
+      • <b>Delete / Backspace / 🗑️</b>: Delete selected element
+    </div>
+    <div id="statusBanner" style="margin-top:auto;padding:8px;background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:6px;font-family:Consolas,monospace;font-size:11px;color:var(--aqua);">
+      Ready · Example Workflow Active (All Elements &amp; Connectors)
+    </div>
+    <div class="sidebar-resizer-left" onmousedown="startSidebarResize(event, 'left')" title="Drag to resize Left Palette"></div>
+  </aside>
+
+  <main class="canvas-viewport workflow-active" id="viewport">
+    <div id="constructionBorderOverlay" class="construction-border-overlay" title="Under Construction Mode — Safe to edit"></div>
+    <div id="activeCautionBadge" class="active-caution-badge" title="Active Live Workflow — Locked in View Mode until unlocked">
+      <span class="caution-triangle-wrap">
+        <svg class="caution-triangle-svg" viewBox="0 0 24 22" fill="none">
+          <path d="M12 2L22.5 20H1.5L12 2Z" fill="rgba(239,68,68,0.18)" stroke="#f87171" stroke-width="1.8" stroke-linejoin="round"/>
+        </svg>
+        <span id="activeRedLed" class="pulsing-red-led"></span>
+      </span>
+      <span class="caution-active-label">Caution, active workflow</span>
+    </div>
+    <div class="empty-hint" id="canvasHint">
+      ✨ Blank Visual Workflow Canvas — Click any left-palette block, click 🧪 Load Demo Workflow, or Right-Click anywhere to spawn elements!
+    </div>
+    <div id="world-layer">
+      <svg id="wire-svg"></svg>
+      <div id="dom-items-layer"></div>
+    </div>
+  </main>
+
+  <aside class="right-inspector" id="rightSidebar" style="position:relative;">
+    <div class="sidebar-resizer-right" onmousedown="startSidebarResize(event, 'right')" title="Drag to resize Right Inspector"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div class="sec-hdr" style="border:none;margin:0;">Selected Element Inspector</div>
+      <button class="hdr-mini-btn" onclick="deselectAll()" title="Deselect &amp; collapse inspector">✕ Hide</button>
+    </div>
+    <div id="inspectorContent" style="display:flex;flex-direction:column;gap:8px;font-size:12px;">
+      <div style="color:var(--fg1);">Click any Category, Subcategory, Cell, Node, Sticky Note, Bus Bar, or File Container on the canvas to edit its title, ports, notes, orientation, or script binding.</div>
+    </div>
+
+    <div class="sec-hdr" style="margin-top:12px;">Live Graph Summary</div>
+    <div id="graphMetrics" style="font-family:Consolas,monospace;font-size:11px;color:var(--accent);line-height:1.5;"></div>
+    <textarea id="liveJsonBox" readonly style="width:100%;height:240px;background:#0c1013;color:#a7c080;font-family:Consolas,monospace;font-size:10px;border:1px solid var(--border);border-radius:6px;padding:6px;"></textarea>
+  </aside>
+</div>
+
+<!-- Right-click context menu -->
+<div class="ctx-menu" id="ctxMenu">
+  <button onclick="ctxSpawn('empty')">➕ Empty Node Here</button>
+  <button onclick="ctxSpawn('sticky')">📝 + Sticky Note (Text / To-Do / Paste PNG) Here</button>
+  <button onclick="ctxSpawn('external_in')">📥 + Upstream Workflow (External In) Here</button>
+  <button onclick="ctxSpawn('external_out')">📤 + Downstream Workflow (External Out) Here</button>
+  <button onclick="ctxSpawn('category')">📁 + Category Container Here</button>
+  <button onclick="ctxSpawn('subcategory')">📂 + Subcategory Container Here</button>
+  <button onclick="ctxSpawn('cell')">🧱 + Cell / Grid Slot Here</button>
+  <button onclick="ctxSpawn('node')">⚙️ + Processing / Algorithm Node Here</button>
+  <button onclick="ctxSpawn('llm_query')">🤖 + LLM / AI Query Node Here</button>
+  <button onclick="ctxSpawn('bucket')">🗄️ + File Container Block Here</button>
+  <button onclick="ctxSpawn('bus')">⚡ + Bus Bar (Left→Right) Here</button>
+  <button onclick="deselectAll()">⬜ Deselect All (Clean View)</button>
+</div>
+
+<!-- Interactive 📸 Snapshot & Draw Markup Modal -->
+<div id="snapshotDrawModal" class="modal-backdrop" role="dialog" aria-label="Snapshot and Draw Markup Modal" style="z-index:100020;background:rgba(5,8,15,0.88);display:none;align-items:center;justify-content:center;padding:14px;">
+  <div style="width:1240px;max-width:96vw;max-height:94vh;background:#141a20;border:1.5px solid #38bdf8;border-radius:12px;box-shadow:0 20px 55px rgba(0,0,0,0.85);display:flex;flex-direction:column;overflow:hidden;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:linear-gradient(90deg,#11161b,#1e2832);border-bottom:1px solid rgba(236,230,216,0.16);flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
+        <strong style="font-size:13.5px;color:#38bdf8;">📸 Workflow Schematic Snapshot &amp; Freehand Markup</strong>
+        <button type="button" class="snap-color-btn" data-pen-color="#22c55e" onclick="setSnapshotPenColor('#22c55e')" style="padding:3px 8px;border-radius:5px;background:rgba(34,197,94,0.2);border:1.5px solid #22c55e;color:#bbf7d0;font-size:11px;font-weight:700;cursor:pointer;">🟢 Green</button>
+        <button type="button" class="snap-color-btn" data-pen-color="#ef4444" onclick="setSnapshotPenColor('#ef4444')" style="padding:3px 8px;border-radius:5px;background:rgba(239,68,68,0.2);border:1px solid #ef4444;color:#fecaca;font-size:11px;font-weight:700;cursor:pointer;">🔴 Red</button>
+        <button type="button" class="snap-color-btn" data-pen-color="#eab308" onclick="setSnapshotPenColor('#eab308')" style="padding:3px 8px;border-radius:5px;background:rgba(234,179,8,0.2);border:1px solid #eab308;color:#fef08a;font-size:11px;font-weight:700;cursor:pointer;">🟡 Yellow</button>
+        <button type="button" class="snap-color-btn" data-pen-color="#38bdf8" onclick="setSnapshotPenColor('#38bdf8')" style="padding:3px 8px;border-radius:5px;background:rgba(56,189,248,0.2);border:1px solid #38bdf8;color:#bae6fd;font-size:11px;font-weight:700;cursor:pointer;">🔵 Cyan</button>
+        <label style="font-size:11px;color:var(--fg1);display:inline-flex;align-items:center;gap:4px;">Brush:
+          <input id="snapshotBrushSize" type="range" min="2" max="16" value="4" oninput="setSnapshotBrushSize(this.value)" style="width:68px;accent-color:#38bdf8;cursor:pointer;" />
+        </label>
+        <button type="button" onclick="undoSnapshotStroke()" style="padding:3px 8px;border-radius:5px;background:var(--bg2);border:1px solid var(--border);color:var(--fg0);font-size:11px;cursor:pointer;">↩ Undo</button>
+        <button type="button" onclick="clearSnapshotMarkup()" style="padding:3px 8px;border-radius:5px;background:var(--bg2);border:1px solid var(--border);color:#fca5a5;font-size:11px;cursor:pointer;">🗑 Clear Markup</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <button id="btnCopySnapshotClipboard" type="button" onclick="copySnapshotToClipboard()" style="padding:5px 11px;border-radius:6px;background:rgba(56,189,248,0.22);border:1px solid #38bdf8;color:#ffffff;font-size:11.5px;font-weight:700;cursor:pointer;">📋 Copy Snapshot to Clipboard</button>
+        <button type="button" onclick="closeSnapshotAndDrawModal()" aria-label="Close Snapshot Modal" style="padding:4px 9px;border-radius:6px;background:var(--bg2);border:1px solid var(--border);color:var(--fg0);font-size:12px;cursor:pointer;">✕</button>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 14px;background:#0d1216;border-bottom:1px solid rgba(236,230,216,0.12);font-size:11px;flex-wrap:wrap;">
+      <label for="snapshotNoteInput" class="visually-hidden">Annotation note</label>
+      <input id="snapshotNoteInput" type="text" placeholder="Optional markup note (e.g., 'Connect Node 2 to Node 4 here')..." style="flex:1;min-width:220px;background:var(--bg2);color:var(--fg0);border:1px solid var(--border);border-radius:5px;padding:4px 8px;font-size:11px;" />
+      <span id="snapshotModalStatus" aria-live="polite" style="font-family:Consolas,monospace;color:#6ee7b7;font-size:11px;">Ready · Draw freehand markup directly on the schematic below</span>
+    </div>
+    <div style="padding:12px;background:#090d11;overflow:auto;display:flex;justify-content:center;align-items:center;flex:1;">
+      <canvas id="snapshotDrawCanvas" width="1200" height="650" style="max-width:100%;height:auto;background:#111518;border:1px solid rgba(236,230,216,0.2);border-radius:8px;cursor:crosshair;touch-action:none;"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- 🛡️ Non-Destructive Overwrite Guard & Candidate Diff Inspector Modal -->
+<div id="fileDiffInspectorModal" class="modal-backdrop" role="dialog" aria-label="Non-Destructive Overwrite Guard &amp; Candidate Diff Inspector" style="z-index:100030;background:rgba(5,8,15,0.9);display:none;align-items:center;justify-content:center;padding:14px;">
+  <div style="width:760px;max-width:96vw;background:#141a20;border:1.5px solid #facc15;border-radius:12px;box-shadow:0 22px 60px rgba(0,0,0,0.88);display:flex;flex-direction:column;overflow:hidden;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:linear-gradient(90deg,#1a170d,#282210);border-bottom:1px solid rgba(250,204,21,0.28);">
+      <strong style="font-size:13.5px;color:#fde047;">🛡️ Non-Destructive Overwrite Guard — Candidate Output vs. Existing File Diff</strong>
+      <button type="button" onclick="closeFileDiffInspectorModal()" style="padding:3px 9px;border-radius:6px;background:var(--bg2);border:1px solid var(--border);color:var(--fg0);font-size:12px;cursor:pointer;">✕</button>
+    </div>
+    <div style="padding:14px;display:flex;flex-direction:column;gap:10px;font-size:12px;">
+      <div id="fileDiffModalHeaderInfo" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;background:#0d1216;padding:8px 10px;border-radius:6px;border:1px solid rgba(236,230,216,0.14);font-family:Consolas,monospace;font-size:11px;"></div>
+      <pre id="fileDiffModalPre" style="margin:0;padding:10px 12px;max-height:280px;overflow:auto;background:#090d11;border:1px solid rgba(250,204,21,0.28);border-radius:6px;color:#fef3c7;font-family:Consolas,monospace;font-size:11px;white-space:pre-wrap;line-height:1.45;"></pre>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding-top:4px;">
+        <span id="fileDiffModalStatus" style="font-family:Consolas,monospace;font-size:11px;color:#fde68a;">🛡️ Existing file is untouched on disk until you choose an action below</span>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button id="btnDiffKeepExisting" type="button" onclick="confirmDiffKeepExisting()" style="padding:6px 12px;border-radius:6px;background:rgba(56,189,248,0.2);border:1px solid #38bdf8;color:#e0f2fe;font-size:11.5px;font-weight:700;cursor:pointer;">🛡️ Keep Existing (Discard Candidate)</button>
+          <button id="btnDiffApplyWithBackup" type="button" onclick="confirmDiffApplyWithBackup()" style="padding:6px 14px;border-radius:6px;background:linear-gradient(135deg,#059669,#10b981);border:1px solid #6ee7b7;color:#ffffff;font-size:11.5px;font-weight:700;cursor:pointer;">✅ Apply &amp; Backup .bak</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="honeycomb-popover" id="honeycombPopover" role="dialog" aria-label="Honeycomb Color Palette">
+  <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);padding-bottom:6px;">
+    <strong style="color:var(--gold);font-size:12px;">⬡ Honeycomb Palette</strong>
+    <div style="display:flex;align-items:center;gap:6px;">
+      <span id="honeycombActiveHexLabel" style="font-family:Consolas,monospace;font-size:10px;color:var(--aqua);">#38bdf8</span>
+      <button class="hdr-mini-btn" onclick="toggleHoneycombPopover(event, false)" title="Close Honeycomb Palette [Esc]">✕</button>
+    </div>
+  </div>
+  <div id="honeycombPopoverGrid" class="honeycomb-grid"></div>
+</div>
+
+<!-- Full-Spectrum Color Picker Modal -->
+<div id="fullSpectrumColorModal" class="modal-backdrop" role="dialog" aria-label="Full-Spectrum Color Picker" style="z-index:100040;display:none;">
+  <div class="fs-picker-card">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <strong style="color:var(--aqua);font-size:13px;">🌈 Full-Spectrum Color Picker</strong>
+      <button type="button" class="hdr-mini-btn" onclick="closeFullSpectrumColorModal()" title="Close [Esc]">✕</button>
+    </div>
+    <div class="fs-canvas-wrap">
+      <canvas id="fsSvCanvas" width="296" height="170" title="Saturation &amp; Value — Click or drag"></canvas>
+      <canvas id="fsHueCanvas" width="296" height="22" title="360° Hue Spectrum — Click or drag"></canvas>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div id="fsPreviewSwatch" style="width:42px;height:32px;border-radius:6px;border:1.5px solid rgba(236,230,216,0.55);background:#38bdf8;flex-shrink:0;"></div>
+      <div class="fs-rgb-row" style="flex:1;">
+        <div>
+          <label for="fsHexInput">HEX</label>
+          <input type="text" id="fsHexInput" maxlength="7" value="#38bdf8" oninput="onFullSpectrumHexInput(this.value)">
+        </div>
+        <div>
+          <label for="fsRInput">R</label>
+          <input type="number" id="fsRInput" min="0" max="255" value="56" oninput="onFullSpectrumRgbInput()">
+        </div>
+        <div>
+          <label for="fsGInput">G</label>
+          <input type="number" id="fsGInput" min="0" max="255" value="189" oninput="onFullSpectrumRgbInput()">
+        </div>
+        <div>
+          <label for="fsBInput">B</label>
+          <input type="number" id="fsBInput" min="0" max="255" value="248" oninput="onFullSpectrumRgbInput()">
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:6px;padding-top:4px;">
+      <button id="btnFsResetColor" type="button" onclick="resetFullSpectrumModalColor()" style="padding:5px 10px;font-size:11px;">↺ Reset</button>
+      <button id="btnFsCancelColor" type="button" onclick="closeFullSpectrumColorModal()" style="padding:5px 10px;font-size:11px;">Cancel</button>
+      <button id="btnFsApplyColor" type="button" class="btn-primary" onclick="applyFullSpectrumModalColor()" style="padding:5px 12px;font-size:11px;font-weight:700;">Apply Color</button>
+    </div>
+  </div>
+</div>
+
+<script id="initial-state-script">
+window.__STANDALONE_OFFLINE_MODE__ = false;
+window.__INITIAL_SANDBOX_STATE__ = window.__INITIAL_SANDBOX_STATE__ || null;
+</script>

@@ -1,0 +1,395 @@
+{
+  "workflowId": "etl_multi_stage_demo",
+  "title": "ETL Multi-Stage Demo (Black-Box Subsystems & AI Query)",
+  "workflowStatus": "active",
+  "wireStyle": "schematic",
+  "wireSelectMode": false,
+  "wireDeleteMode": false,
+  "activeBrushColor": "#10b981",
+  "lockLayout": true,
+  "hideLeftPalette": false,
+  "fullScreenView": false,
+  "panX": 30,
+  "panY": 70,
+  "zoom": 0.78,
+  "categories": [
+    {
+      "id": "cat_extract",
+      "title": "Subsystem A: Document Extract & Chunking",
+      "color": "#38bdf8",
+      "inPorts": [
+        "source_docs"
+      ],
+      "outPorts": [
+        "chunk_stream"
+      ],
+      "bottomPorts": [
+        "extract_bus"
+      ],
+      "notes": [
+        "Black-Box Extract unit with isolated internal wiring",
+        "Collapse header to inspect simplified I/O contract"
+      ],
+      "collapsed": false,
+      "x": 430,
+      "y": 50,
+      "w": 660,
+      "h": 410,
+      "collapsedSections": {}
+    },
+    {
+      "id": "cat_ai_enrich",
+      "title": "Subsystem B: Local AI Enrichment & Packaging",
+      "color": "#a855f7",
+      "inPorts": [
+        "chunks_in"
+      ],
+      "outPorts": [
+        "curated_digest"
+      ],
+      "bottomPorts": [
+        "enrich_bus"
+      ],
+      "notes": [
+        "Demonstrates LLM / AI Query Node wired to downstream artifact bucket"
+      ],
+      "collapsed": false,
+      "x": 1190,
+      "y": 50,
+      "w": 710,
+      "h": 430,
+      "collapsedSections": {}
+    }
+  ],
+  "subcategories": [],
+  "cells": [],
+  "nodes": [
+    {
+      "id": "n_ext_upstream",
+      "title": "📥 Upstream Feed Connector",
+      "type": "external_in",
+      "category": "📥 EXTERNAL WORKFLOW IN",
+      "color": "#38bdf8",
+      "inPorts": [
+        "feed_trigger"
+      ],
+      "outPorts": [
+        "doc_batch"
+      ],
+      "inputSpec": "External source schedule",
+      "outputSpec": "Raw markdown and text batch",
+      "steps": [
+        "Receives batch handoff from upstream producer"
+      ],
+      "params": {
+        "connector_role": "external_in"
+      },
+      "notes": [
+        "Upstream external workflow handoff"
+      ],
+      "scriptBinding": "modules/upstream_connector.py",
+      "x": 50,
+      "y": 80,
+      "w": 290,
+      "h": 210,
+      "collapsedSections": {}
+    },
+    {
+      "id": "n_extract_text",
+      "title": "📄 Extract Text & Metadata",
+      "category": "Extract",
+      "color": "#14b8a6",
+      "inPorts": [
+        "raw_docs"
+      ],
+      "outPorts": [
+        "parsed_sections"
+      ],
+      "steps": [
+        "Strip markup noise",
+        "Preserve heading hierarchy"
+      ],
+      "params": {
+        "preserve_headings": true
+      },
+      "notes": [
+        "Deterministic text extraction"
+      ],
+      "scriptBinding": "modules/extract_text.py",
+      "x": 455,
+      "y": 210,
+      "w": 270,
+      "h": 220,
+      "collapsedSections": {},
+      "_parentContId": "cat_extract"
+    },
+    {
+      "id": "n_chunker",
+      "title": "✂️ Chunk & Deduplicate",
+      "category": "Transform",
+      "color": "#10b981",
+      "inPorts": [
+        "sections_in"
+      ],
+      "outPorts": [
+        "clean_chunks"
+      ],
+      "steps": [
+        "Split into 512-token overlapping windows",
+        "Drop exact duplicate chunks"
+      ],
+      "params": {
+        "window_tokens": 512,
+        "overlap": 64
+      },
+      "notes": [
+        "Prepares clean context chunks"
+      ],
+      "scriptBinding": "modules/chunker.py",
+      "x": 790,
+      "y": 210,
+      "w": 270,
+      "h": 220,
+      "collapsedSections": {},
+      "_parentContId": "cat_extract"
+    },
+    {
+      "id": "n_llm_summarize",
+      "title": "🤖 Local LLM Summary Query",
+      "type": "llm_query",
+      "category": "🤖 LLM / AI QUERY",
+      "color": "#a855f7",
+      "inPorts": [
+        "files_in",
+        "context_in"
+      ],
+      "outPorts": [
+        "files_out",
+        "response_out"
+      ],
+      "llmProvider": "ollama",
+      "llmModel": "llama3.2",
+      "llmPrompt": "Summarize key trends and anomalies in the input records as a concise Markdown table.",
+      "steps": [
+        "Select Ollama or API provider",
+        "Run prompt over wired input records"
+      ],
+      "params": {
+        "provider": "ollama",
+        "model": "llama3.2"
+      },
+      "notes": [
+        "Optional local AI enrichment stage"
+      ],
+      "scriptBinding": "modules/llm_query_runner.py",
+      "x": 1220,
+      "y": 205,
+      "w": 360,
+      "h": 250,
+      "collapsedSections": {},
+      "_parentContId": "cat_ai_enrich"
+    },
+    {
+      "id": "n_package_out",
+      "title": "📦 Package Verified Bundle",
+      "category": "Load",
+      "color": "#10b981",
+      "inPorts": [
+        "digest_in"
+      ],
+      "outPorts": [
+        "published_zip"
+      ],
+      "steps": [
+        "Verify checksums",
+        "Write final release manifest"
+      ],
+      "params": {
+        "checksum": "sha256"
+      },
+      "notes": [
+        "Final packaging node"
+      ],
+      "scriptBinding": "modules/package_bundle.py",
+      "x": 1615,
+      "y": 215,
+      "w": 265,
+      "h": 215,
+      "collapsedSections": {},
+      "_parentContId": "cat_ai_enrich"
+    },
+    {
+      "id": "n_ext_downstream",
+      "title": "📤 Downstream Publish Target",
+      "type": "external_out",
+      "category": "📤 EXTERNAL WORKFLOW OUT",
+      "color": "#10b981",
+      "inPorts": [
+        "bundle_in"
+      ],
+      "outPorts": [
+        "publish_receipt"
+      ],
+      "steps": [
+        "Deliver verified output bundle to downstream consumer"
+      ],
+      "params": {
+        "connector_role": "external_out"
+      },
+      "notes": [
+        "Downstream external workflow handoff"
+      ],
+      "scriptBinding": "modules/downstream_connector.py",
+      "x": 1980,
+      "y": 350,
+      "w": 290,
+      "h": 210,
+      "collapsedSections": {}
+    }
+  ],
+  "fileContainers": [
+    {
+      "id": "fc_staging_docs",
+      "title": "Staging Source Docs",
+      "pattern": "*.md, *.txt, *.json",
+      "inPorts": [
+        "files_in"
+      ],
+      "outPorts": [
+        "files_out"
+      ],
+      "files": [
+        "release_notes_draft.md",
+        "metrics_snapshot.json"
+      ],
+      "x": 50,
+      "y": 330,
+      "w": 280,
+      "h": 215,
+      "collapsedSections": {},
+      "filter": "*.md, *.txt, *.json"
+    },
+    {
+      "id": "fc_curated_out",
+      "title": "Curated ETL Artifacts",
+      "pattern": "*.md, *.json, *.zip",
+      "inPorts": [
+        "files_in"
+      ],
+      "outPorts": [
+        "files_out"
+      ],
+      "files": [
+        "anomaly_digest.md",
+        "etl_bundle_manifest.json"
+      ],
+      "x": 1980,
+      "y": 90,
+      "w": 290,
+      "h": 215,
+      "collapsedSections": {},
+      "filter": "*.md, *.json, *.zip"
+    }
+  ],
+  "buses": [],
+  "stickyNotes": [],
+  "wires": [
+    {
+      "id": "w_etl_1",
+      "fromNode": "n_ext_upstream",
+      "fromPort": "doc_batch",
+      "toNode": "cat_extract",
+      "toPort": "source_docs",
+      "color": "#38bdf8"
+    },
+    {
+      "id": "w_etl_2",
+      "fromNode": "fc_staging_docs",
+      "fromPort": "files_out",
+      "toNode": "cat_extract",
+      "toPort": "source_docs",
+      "color": "#f59e0b"
+    },
+    {
+      "id": "w_etl_3",
+      "fromNode": "cat_extract",
+      "fromPort": "source_docs",
+      "fromDir": "in",
+      "toNode": "n_extract_text",
+      "toPort": "raw_docs",
+      "toDir": "in",
+      "color": "#38bdf8"
+    },
+    {
+      "id": "w_etl_4",
+      "fromNode": "n_extract_text",
+      "fromPort": "parsed_sections",
+      "toNode": "n_chunker",
+      "toPort": "sections_in",
+      "color": "#14b8a6"
+    },
+    {
+      "id": "w_etl_5",
+      "fromNode": "n_chunker",
+      "fromPort": "clean_chunks",
+      "fromDir": "out",
+      "toNode": "cat_extract",
+      "toPort": "chunk_stream",
+      "toDir": "out",
+      "color": "#10b981"
+    },
+    {
+      "id": "w_etl_6",
+      "fromNode": "cat_extract",
+      "fromPort": "chunk_stream",
+      "toNode": "cat_ai_enrich",
+      "toPort": "chunks_in",
+      "color": "#10b981"
+    },
+    {
+      "id": "w_etl_7",
+      "fromNode": "cat_ai_enrich",
+      "fromPort": "chunks_in",
+      "fromDir": "in",
+      "toNode": "n_llm_summarize",
+      "toPort": "context_in",
+      "toDir": "in",
+      "color": "#a855f7"
+    },
+    {
+      "id": "w_etl_8",
+      "fromNode": "n_llm_summarize",
+      "fromPort": "response_out",
+      "toNode": "n_package_out",
+      "toPort": "digest_in",
+      "color": "#a855f7"
+    },
+    {
+      "id": "w_etl_9",
+      "fromNode": "n_package_out",
+      "fromPort": "published_zip",
+      "fromDir": "out",
+      "toNode": "cat_ai_enrich",
+      "toPort": "curated_digest",
+      "toDir": "out",
+      "color": "#10b981"
+    },
+    {
+      "id": "w_etl_10",
+      "fromNode": "cat_ai_enrich",
+      "fromPort": "curated_digest",
+      "toNode": "fc_curated_out",
+      "toPort": "files_in",
+      "color": "#10b981"
+    },
+    {
+      "id": "w_etl_11",
+      "fromNode": "cat_ai_enrich",
+      "fromPort": "curated_digest",
+      "toNode": "n_ext_downstream",
+      "toPort": "bundle_in",
+      "color": "#10b981"
+    }
+  ],
+  "notes": "Multi-stage ETL demo featuring two collapsible black-box subsystems, external workflow connectors, and a local AI query node."
+}
