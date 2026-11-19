@@ -3,6 +3,1843 @@ const SVG_NS_URI = 'ht' + 'tp://www.w3.org/2000/svg';
 const XHTML_NS_URI = 'ht' + 'tp://www.w3.org/1999/xhtml';
 const OLLAMA_GENERATE_PATH = ['', 'api', 'generate'].join('/');
 
+const WIRE_DETAIL_MODES_V190 = ['clean_errors', 'types_labels', 'full_contracts'];
+const LEFT_DRAWER_STORAGE_KEY_V190 = 'sandbox_workflow_left_drawers_v190';
+const V19_REVIEW_STORAGE_KEY_V190 = 'sandbox_workflow_v190_review_pad_v1';
+const V19_SEMANTIC_VERBS = ['GATES', 'VALIDATES', 'CONSTRAINS', 'DEPENDS_ON', 'TRIGGERS_ON_FAIL'];
+
+const V19_REVIEW_SECTIONS = [
+  { id: 'clean_wires', title: '1. Clean Wires & Red Error Badges' },
+  { id: 'script_subnode', title: '2. Script-as-Subnode & Key Alias Mapper' },
+  { id: 'hub_routing', title: '3. Hub Internal Strands & Dynamic Endpoints' },
+  { id: 'gauges_trio', title: '4. Variable-Bound Gauges (Dial/Digital/Sparkline)' },
+  { id: 'left_palette', title: '5. Collapsible Left Palette & Single-Click Buttons' }
+];
+
+function createV190TelemetryPipelineState() {
+  const presets = (typeof window !== 'undefined' && window.WORKFLOW_PRESETS) ? window.WORKFLOW_PRESETS : {};
+  if (presets.v190_telemetry_pipeline && typeof presets.v190_telemetry_pipeline === 'object') {
+    return JSON.parse(JSON.stringify(presets.v190_telemetry_pipeline));
+  }
+  return createExampleWorkflowState();
+}
+window.createV190TelemetryPipelineState = createV190TelemetryPipelineState;
+
+function createV191TelemetryPipelineState() {
+  const presets = (typeof window !== 'undefined' && window.WORKFLOW_PRESETS) ? window.WORKFLOW_PRESETS : {};
+  if (presets.v191_telemetry_pipeline && typeof presets.v191_telemetry_pipeline === 'object') {
+    return JSON.parse(JSON.stringify(presets.v191_telemetry_pipeline));
+  }
+  return createV190TelemetryPipelineState();
+}
+window.createV191TelemetryPipelineState = createV191TelemetryPipelineState;
+
+let armedHubInnerPin = null;
+let draggingHubInnerPin = null;
+let suppressNextHubPinClickV191 = false;
+
+function getWireDetailModeV190(stateObj) {
+  const target = stateObj || S;
+  const raw = target && target.wireDetailMode;
+  return WIRE_DETAIL_MODES_V190.includes(raw) ? raw : 'clean_errors';
+}
+
+function syncWireDetailButtonUIV190() {
+  const btn = typeof document !== 'undefined' ? document.getElementById('btnWireDetailMode') : null;
+  if (!btn) return;
+  const mode = getWireDetailModeV190(S);
+  const metaMap = {
+    clean_errors: {
+      label: '🧹 Wire: Clean',
+      title: '🧹 Wire Detail: Clean (Quiet healthy wires, bright red error badges, 1-line script bar) — Click to cycle'
+    },
+    types_labels: {
+      label: '🏷️ Wire: Types',
+      title: '🏷️ Wire Detail: Types & Labels (Shows carrier + variable counts on valid wires) — Click to cycle'
+    },
+    full_contracts: {
+      label: '🔬 Wire: Contracts',
+      title: '🔬 Wire Detail: Full Contracts (Expands inner Script-as-Subnode pins, aliases & modes) — Click to cycle'
+    }
+  };
+  const cfg = metaMap[mode] || metaMap.clean_errors;
+  btn.textContent = cfg.label;
+  btn.title = cfg.title;
+  if (btn.classList && typeof btn.classList.toggle === 'function') {
+    btn.classList.toggle('active', mode !== 'clean_errors');
+  }
+}
+window.syncWireDetailButtonUIV190 = syncWireDetailButtonUIV190;
+
+function cycleWireDetailModeV190(forceMode) {
+  ensureStateDefaults();
+  const cur = getWireDetailModeV190(S);
+  const next = (typeof forceMode === 'string' && WIRE_DETAIL_MODES_V190.includes(forceMode))
+    ? forceMode
+    : WIRE_DETAIL_MODES_V190[(WIRE_DETAIL_MODES_V190.indexOf(cur) + 1) % WIRE_DETAIL_MODES_V190.length];
+  S.wireDetailMode = next;
+  (S.nodes || []).forEach(n => {
+    if (n && n.scriptSubnode) delete n._subnodeExpandOverride;
+  });
+  syncWireDetailButtonUIV190();
+  renderAll({ preserveInspector: true });
+  setStatus(`🏷️ Wire Detail Mode: ${next}`);
+  return next;
+}
+window.cycleWireDetailModeV190 = cycleWireDetailModeV190;
+
+function resolveEndpointSlugV190(item) {
+  if (!item || typeof item !== 'object') return 'item';
+  if (item.endpointSlug) return String(item.endpointSlug).trim();
+  const sb = (item.scriptSubnode && item.scriptSubnode.scriptName) || item.scriptBinding || item.combinerScript || '';
+  if (sb) {
+    return String(sb).replace(/^.*[\\/]/, '').replace(/\.[A-Za-z0-9]+$/, '').slice(0, 22);
+  }
+  const clean = String(item.title || item.id || 'item')
+    .replace(/^[^A-Za-z0-9]+/, '')
+    .replace(/[^A-Za-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toLowerCase();
+  return clean.slice(0, 22) || String(item.id || 'item');
+}
+
+function findItemInStateV190(state, itemId) {
+  if (!state || !itemId) return null;
+  const lists = [
+    state.nodes || [],
+    state.fileContainers || [],
+    state.buses || [],
+    state.categories || [],
+    state.subcategories || [],
+    state.cells || []
+  ];
+  for (let i = 0; i < lists.length; i++) {
+    const arr = lists[i];
+    for (let j = 0; j < arr.length; j++) {
+      if (arr[j] && arr[j].id === itemId) return arr[j];
+    }
+  }
+  return null;
+}
+
+function getItemKindInStateV190(state, itemId) {
+  if (!state || !itemId) return '';
+  if ((state.nodes || []).some(x => x && x.id === itemId)) return 'node';
+  if ((state.fileContainers || []).some(x => x && x.id === itemId)) return 'bucket';
+  if ((state.buses || []).some(x => x && x.id === itemId)) return 'bus';
+  return 'container';
+}
+
+function uniqStrListV190(arr) {
+  const out = [];
+  const seen = new Set();
+  (arr || []).forEach(v => {
+    const s = String(v || '').trim();
+    if (s && !seen.has(s)) {
+      seen.add(s);
+      out.push(s);
+    }
+  });
+  return out;
+}
+
+function itemBelongsInsideContainerV191(item, cont) {
+  if (!item || !cont || item.id === cont.id) return false;
+  if (item.parentId && item.parentId === cont.id) return true;
+  if (Array.isArray(cont.childNodeIds) && cont.childNodeIds.includes(item.id)) return true;
+  const cx = (Number(item.x) || 0) + (Number(item.w) || 240) * 0.35;
+  const cy = (Number(item.y) || 0) + 30;
+  return cx >= cont.x && cx <= cont.x + (cont.w || 320) && cy >= cont.y && cy <= cont.y + (cont.h || 220);
+}
+
+function detectContainerBoundaryBreachesV191(state) {
+  const st = state || S;
+  if (!st || !Array.isArray(st.wires)) return [];
+  const allContainers = [
+    ...(st.categories || []),
+    ...(st.subcategories || []),
+    ...(st.cells || [])
+  ];
+  if (!allContainers.length) return [];
+  const breaches = [];
+  st.wires.forEach(w => {
+    if (!w || !w.fromNode || !w.toNode) return;
+    const fromObj = findItemInStateV190(st, w.fromNode);
+    const toObj = findItemInStateV190(st, w.toNode);
+    if (!fromObj || !toObj) return;
+    for (let i = 0; i < allContainers.length; i++) {
+      const cont = allContainers[i];
+      if (!cont || w.fromNode === cont.id || w.toNode === cont.id) continue;
+      const fromInside = itemBelongsInsideContainerV191(fromObj, cont);
+      const toInside = itemBelongsInsideContainerV191(toObj, cont);
+      if (fromInside !== toInside) {
+        breaches.push({
+          wireId: w.id,
+          containerId: cont.id,
+          leakingNodeId: fromInside ? w.fromNode : w.toNode,
+          direction: fromInside ? 'outbound' : 'inbound'
+        });
+      }
+    }
+  });
+  return breaches;
+}
+window.detectContainerBoundaryBreachesV191 = detectContainerBoundaryBreachesV191;
+
+function resolveItemOutputManifestV190(itemId, portName, state, visited) {
+  const st = state || S;
+  const visitSet = visited instanceof Set ? visited : new Set();
+  const visitKey = `${itemId}:${portName || ''}`;
+  if (visitSet.has(visitKey)) {
+    return { carrier: 'JSON', vars: [], hasContract: false };
+  }
+  visitSet.add(visitKey);
+
+  const item = findItemInStateV190(st, itemId);
+  if (!item) return { carrier: 'JSON', vars: [], hasContract: false };
+  const kind = getItemKindInStateV190(st, itemId);
+  const wires = Array.isArray(st.wires) ? st.wires : [];
+
+  if (kind === 'bucket') {
+    const hasCustomCarrier = Boolean(item.carrierType);
+    const carrier = item.carrierType || 'Files[]';
+    const declared = Array.isArray(item.emittedVars) ? uniqStrListV190(item.emittedVars) : [];
+    return {
+      carrier,
+      vars: declared,
+      hasContract: hasCustomCarrier || declared.length > 0
+    };
+  }
+
+  if (kind === 'bus') {
+    const inWires = wires.filter(w => w && w.toNode === item.id && w.wireKind !== 'semantic');
+    if (item.hubMode !== 'combiner') {
+      const inPorts = Array.isArray(item.inPorts) ? item.inPorts : [];
+      const outPorts = Array.isArray(item.outPorts) ? item.outPorts : [];
+      const outIdx = portName ? outPorts.indexOf(portName) : -1;
+      let matchedWire = null;
+      if (Array.isArray(item.hubInternalWires) && outIdx >= 0) {
+        const iStrand = item.hubInternalWires.find(hw => hw && hw.toKind === 'out' && Number(hw.toIdx) === outIdx && hw.fromKind === 'in');
+        if (iStrand && inPorts[iStrand.fromIdx]) {
+          matchedWire = inWires.find(w => w.toPort === inPorts[iStrand.fromIdx]) || null;
+        } else if (!item.hubInternalWires.some(hw => hw && hw.toKind === 'out' && Number(hw.toIdx) === outIdx)) {
+          return {
+            carrier: item.carrierType || 'JSON',
+            vars: [],
+            hasContract: Boolean(item.carrierType)
+          };
+        }
+      }
+      if (!matchedWire && outIdx >= 0 && inPorts[outIdx]) {
+        matchedWire = inWires.find(w => w.toPort === inPorts[outIdx]) || null;
+      }
+      if (!matchedWire && inWires.length === 1) {
+        matchedWire = inWires[0];
+      } else if (!matchedWire && inWires.length > 0) {
+        matchedWire = inWires[Math.max(0, Math.min(inWires.length - 1, outIdx >= 0 ? outIdx : 0))];
+      }
+      if (matchedWire) {
+        return resolveItemOutputManifestV190(matchedWire.fromNode, matchedWire.fromPort, st, visitSet);
+      }
+      return {
+        carrier: item.carrierType || 'JSON',
+        vars: Array.isArray(item.emittedVars) ? uniqStrListV190(item.emittedVars) : [],
+        hasContract: Boolean(item.carrierType)
+      };
+    }
+
+    const upstreamVarsSet = new Set();
+    let upstreamCarrier = item.carrierType || 'JSON';
+    let anyIncompatibleCarrier = false;
+    inWires.forEach(w => {
+      const up = resolveItemOutputManifestV190(w.fromNode, w.fromPort, st, new Set(visitSet));
+      (up.vars || []).forEach(v => upstreamVarsSet.add(v));
+      if (item.carrierType && up.carrier && up.carrier !== item.carrierType) {
+        anyIncompatibleCarrier = true;
+        upstreamCarrier = up.carrier;
+      }
+    });
+    const declaredWrites = Array.isArray(item.emittedVars)
+      ? uniqStrListV190(item.emittedVars)
+      : uniqStrListV190(Array.from(upstreamVarsSet));
+    const reads = Array.isArray(item.readsVars) ? uniqStrListV190(item.readsVars) : [];
+    const effectiveWrites = (inWires.length > 0 && reads.length > 0)
+      ? declaredWrites.filter(v => !reads.includes(v) || upstreamVarsSet.has(v))
+      : declaredWrites;
+    return {
+      carrier: anyIncompatibleCarrier ? upstreamCarrier : (item.carrierType || 'JSON'),
+      vars: effectiveWrites,
+      hasContract: Boolean(item.carrierType || declaredWrites.length > 0)
+    };
+  }
+
+  if (kind === 'node') {
+    const sub = (item.scriptSubnode && typeof item.scriptSubnode === 'object') ? item.scriptSubnode : null;
+    const mode = sub && sub.outputMode === 'enrich_forward' ? 'enrich_forward' : 'script_only';
+    const inWires = wires.filter(w => w && w.toNode === item.id && w.wireKind !== 'semantic');
+    const upstreamVars = [];
+    inWires.forEach(w => {
+      const up = resolveItemOutputManifestV190(w.fromNode, w.fromPort, st, new Set(visitSet));
+      (up.vars || []).forEach(v => {
+        if (!upstreamVars.includes(v)) upstreamVars.push(v);
+      });
+    });
+    let writes = [];
+    if (sub && Array.isArray(sub.writesVars)) {
+      writes = uniqStrListV190(sub.writesVars);
+    } else if (Array.isArray(item.emittedVars)) {
+      writes = uniqStrListV190(item.emittedVars);
+    }
+    const mergedVars = mode === 'enrich_forward'
+      ? uniqStrListV190(upstreamVars.concat(writes))
+      : writes;
+    const carrier = item.carrierType || 'JSON';
+    return {
+      carrier,
+      vars: mergedVars,
+      forwardedVars: mode === 'enrich_forward' ? upstreamVars : [],
+      writesVars: writes,
+      hasContract: Boolean(item.carrierType || sub || (Array.isArray(item.emittedVars) && item.emittedVars.length))
+    };
+  }
+
+  const cInWires = wires.filter(w => w && w.toNode === item.id && w.wireKind !== 'semantic');
+  const portMatched = portName ? cInWires.filter(w => w.toPort === portName) : [];
+  const chosenWires = portMatched.length > 0 ? portMatched : cInWires;
+  if (chosenWires.length === 1) {
+    return resolveItemOutputManifestV190(chosenWires[0].fromNode, chosenWires[0].fromPort, st, visitSet);
+  }
+  if (chosenWires.length > 1) {
+    const mergedVars = [];
+    let carrier = item.carrierType || 'JSON';
+    chosenWires.forEach(w => {
+      const up = resolveItemOutputManifestV190(w.fromNode, w.fromPort, st, new Set(visitSet));
+      (up.vars || []).forEach(v => {
+        if (!mergedVars.includes(v)) mergedVars.push(v);
+      });
+      if (up.carrier && up.carrier !== carrier) carrier = up.carrier;
+    });
+    return { carrier, vars: mergedVars, hasContract: mergedVars.length > 0 || Boolean(item.carrierType) };
+  }
+  return { carrier: item.carrierType || 'JSON', vars: [], hasContract: Boolean(item.carrierType) };
+}
+
+function collectContainerPortRequirementsV191(cont, portName, state, visited) {
+  const st = state || S;
+  const visitSet = visited instanceof Set ? visited : new Set();
+  const key = `${cont && cont.id}:${portName || ''}`;
+  if (!cont || visitSet.has(key)) return [];
+  visitSet.add(key);
+  const wires = Array.isArray(st.wires) ? st.wires : [];
+  const outReqs = [];
+  const fwdWires = wires.filter(w => w && w.fromNode === cont.id && w.fromPort === portName && w.wireKind !== 'semantic');
+  fwdWires.forEach(fw => {
+    const target = findItemInStateV190(st, fw.toNode);
+    const tKind = getItemKindInStateV190(st, fw.toNode);
+    if (!target) return;
+    if (tKind === 'container') {
+      collectContainerPortRequirementsV191(target, fw.toPort, st, visitSet).forEach(r => outReqs.push(r));
+      return;
+    }
+    const sub = (target.scriptSubnode && typeof target.scriptSubnode === 'object') ? target.scriptSubnode : null;
+    const aliases = (sub && sub.keyAliases && typeof sub.keyAliases === 'object')
+      ? sub.keyAliases
+      : ((target.keyAliases && typeof target.keyAliases === 'object') ? target.keyAliases : {});
+    let reqVars = [];
+    if (target.portReadsVars && Array.isArray(target.portReadsVars[fw.toPort])) {
+      reqVars = uniqStrListV190(target.portReadsVars[fw.toPort]);
+    } else if (tKind === 'node' && target.type === 'gauge') {
+      reqVars = target.tapVariable ? [String(target.tapVariable).trim()] : [];
+    } else if (sub && Array.isArray(sub.readsVars)) {
+      reqVars = uniqStrListV190(sub.readsVars);
+    } else if (Array.isArray(target.readsVars)) {
+      reqVars = uniqStrListV190(target.readsVars);
+    }
+    const expectedCarrier = target.carrierType || '';
+    const acceptedCarriers = Array.isArray(target.acceptedCarriers) ? target.acceptedCarriers : null;
+    if (reqVars.length === 0 && expectedCarrier) {
+      outReqs.push({ reqVar: '', aliases, expectedCarrier, acceptedCarriers });
+    } else {
+      reqVars.forEach(rv => {
+        outReqs.push({ reqVar: rv, aliases, expectedCarrier, acceptedCarriers });
+      });
+    }
+  });
+  return outReqs;
+}
+
+function findBrokenInternalChainForContainerPortV191(cont, outPortName, state) {
+  const st = state || S;
+  if (!cont || !st) return null;
+  const wires = Array.isArray(st.wires) ? st.wires : [];
+  const queue = [{ nodeId: cont.id, portName: outPortName || null }];
+  const visitedKeys = new Set();
+
+  while (queue.length > 0) {
+    const cur = queue.shift();
+    const visitKey = `${cur.nodeId}:${cur.portName || '*'}`;
+    if (visitedKeys.has(visitKey)) continue;
+    visitedKeys.add(visitKey);
+
+    let inWires = wires.filter(w => w && w.toNode === cur.nodeId && w.wireKind !== 'semantic');
+    if (cur.nodeId === cont.id && cur.portName) {
+      const matched = inWires.filter(w => w.toPort === cur.portName);
+      if (matched.length > 0) inWires = matched;
+    }
+
+    for (let i = 0; i < inWires.length; i++) {
+      const w = inWires[i];
+      const contract = evaluateWireContractV190(w, st, 1);
+      if (!contract.ok) {
+        return contract;
+      }
+      const fromObj = findItemInStateV190(st, w.fromNode);
+      if (!fromObj) continue;
+      const fromKind = getItemKindInStateV190(st, w.fromNode);
+      if (fromKind === 'bus') {
+        const hubRoute = evaluateHubRoutingV190(fromObj, st);
+        if (!hubRoute.ok) {
+          return { ok: false, reason: hubRoute.reason, missingVars: [] };
+        }
+      }
+      if (w.fromNode === cont.id) {
+        queue.push({ nodeId: cont.id, portName: w.fromPort });
+      } else if (itemBelongsInsideContainerV191(fromObj, cont)) {
+        queue.push({ nodeId: fromObj.id, portName: fromKind === 'container' ? w.fromPort : null });
+      }
+    }
+  }
+  return null;
+}
+
+function evaluateWireContractV190(wire, state, depth) {
+  const st = state || S;
+  const evalDepth = Number(depth) || 0;
+  if (!wire) {
+    return {
+      kind: 'data',
+      ok: true,
+      carrier: 'JSON',
+      upstreamVars: [],
+      requiredVars: [],
+      matchedVars: [],
+      missingVars: [],
+      appliedAliases: [],
+      reason: 'No wire'
+    };
+  }
+  if (wire.wireKind === 'semantic') {
+    return {
+      kind: 'semantic',
+      ok: true,
+      verb: wire.relationshipVerb || wire.label || 'RELATES_TO'
+    };
+  }
+
+  const srcItem = findItemInStateV190(st, wire.fromNode);
+  const srcKind = getItemKindInStateV190(st, wire.fromNode);
+  const upManifest = resolveItemOutputManifestV190(wire.fromNode, wire.fromPort, st, new Set());
+  const dstItem = findItemInStateV190(st, wire.toNode);
+  const dstKind = getItemKindInStateV190(st, wire.toNode);
+  const upstreamCarrier = upManifest.carrier || 'JSON';
+  const upstreamVars = uniqStrListV190(upManifest.vars || []);
+
+  if (!dstItem) {
+    return {
+      kind: 'data',
+      ok: true,
+      carrier: upstreamCarrier,
+      upstreamVars,
+      requiredVars: [],
+      matchedVars: [],
+      missingVars: [],
+      appliedAliases: [],
+      reason: 'Target missing'
+    };
+  }
+
+  const sub = (dstItem.scriptSubnode && typeof dstItem.scriptSubnode === 'object') ? dstItem.scriptSubnode : null;
+  const keyAliases = (sub && sub.keyAliases && typeof sub.keyAliases === 'object')
+    ? sub.keyAliases
+    : ((dstItem.keyAliases && typeof dstItem.keyAliases === 'object') ? dstItem.keyAliases : {});
+
+  let requiredVars = [];
+  let containerPortReqs = [];
+  if (dstItem.portReadsVars && Array.isArray(dstItem.portReadsVars[wire.toPort])) {
+    requiredVars = uniqStrListV190(dstItem.portReadsVars[wire.toPort]);
+  } else if (dstKind === 'node' && dstItem.type === 'gauge') {
+    requiredVars = dstItem.tapVariable ? [String(dstItem.tapVariable).trim()] : [];
+  } else if (sub && Array.isArray(sub.readsVars)) {
+    requiredVars = uniqStrListV190(sub.readsVars);
+  } else if (Array.isArray(dstItem.readsVars)) {
+    requiredVars = uniqStrListV190(dstItem.readsVars);
+  } else if (dstKind === 'container') {
+    containerPortReqs = collectContainerPortRequirementsV191(dstItem, wire.toPort, st, new Set());
+    requiredVars = uniqStrListV190(containerPortReqs.map(r => r.reqVar).filter(Boolean));
+  }
+
+  let expectedCarrier = dstItem.carrierType || '';
+  if (!expectedCarrier && dstKind === 'bucket') expectedCarrier = '';
+  const acceptedCarriers = Array.isArray(dstItem.acceptedCarriers) ? dstItem.acceptedCarriers : null;
+  let carrierOk = true;
+  if (expectedCarrier) {
+    if (acceptedCarriers && acceptedCarriers.length) {
+      carrierOk = acceptedCarriers.includes(upstreamCarrier);
+    } else {
+      carrierOk = upstreamCarrier === expectedCarrier;
+    }
+  } else if (containerPortReqs.length > 0) {
+    for (let i = 0; i < containerPortReqs.length; i++) {
+      const cr = containerPortReqs[i];
+      if (!cr.expectedCarrier) continue;
+      const cOk = (cr.acceptedCarriers && cr.acceptedCarriers.length)
+        ? cr.acceptedCarriers.includes(upstreamCarrier)
+        : (upstreamCarrier === cr.expectedCarrier);
+      if (!cOk) {
+        carrierOk = false;
+        expectedCarrier = cr.expectedCarrier;
+        break;
+      }
+    }
+  }
+
+  const matchedVars = [];
+  const missingVars = [];
+  const appliedAliases = [];
+  const reqAliasMap = Object.assign({}, keyAliases);
+  containerPortReqs.forEach(cr => {
+    if (cr.reqVar && cr.aliases && cr.aliases[cr.reqVar] && !reqAliasMap[cr.reqVar]) {
+      reqAliasMap[cr.reqVar] = cr.aliases[cr.reqVar];
+    }
+  });
+  requiredVars.forEach(req => {
+    if (upstreamVars.includes(req)) {
+      matchedVars.push(req);
+    } else {
+      const aliasSrc = reqAliasMap && reqAliasMap[req] ? String(reqAliasMap[req]).trim() : '';
+      if (aliasSrc && upstreamVars.includes(aliasSrc)) {
+        matchedVars.push(req);
+        appliedAliases.push(`${aliasSrc} -> ${req}`);
+      } else {
+        missingVars.push(req);
+      }
+    }
+  });
+
+  let ok = Boolean(carrierOk && missingVars.length === 0);
+  let reason = `${upstreamCarrier} · ${matchedVars.length || upstreamVars.length} vars`;
+  if (!carrierOk) {
+    reason = `Type: ${upstreamCarrier} != ${expectedCarrier}`;
+  } else if (missingVars.length > 0) {
+    reason = `Missing: ${missingVars.join(', ')}`;
+  }
+
+  if (ok && evalDepth === 0 && srcKind === 'container' && srcItem && srcItem.collapsed && !itemBelongsInsideContainerV191(dstItem, srcItem)) {
+    const brokenInternal = findBrokenInternalChainForContainerPortV191(srcItem, wire.fromPort, st);
+    if (brokenInternal && !brokenInternal.ok) {
+      ok = false;
+      reason = brokenInternal.reason || 'Broken internal contract';
+      (brokenInternal.missingVars || []).forEach(mv => {
+        if (!missingVars.includes(mv)) missingVars.push(mv);
+      });
+    }
+  }
+
+  return {
+    kind: 'data',
+    ok,
+    carrier: upstreamCarrier,
+    expectedCarrier: expectedCarrier || upstreamCarrier,
+    upstreamVars,
+    requiredVars,
+    matchedVars,
+    missingVars,
+    appliedAliases,
+    reason
+  };
+}
+window.evaluateWireContractV190 = evaluateWireContractV190;
+
+function seedHubInternalWiresListV191(bus, state) {
+  if (!bus || typeof bus !== 'object') return [];
+  const mode = bus.hubMode === 'combiner' ? 'combiner' : 'passthrough';
+  const inPorts = Array.isArray(bus.inPorts) && bus.inPorts.length ? bus.inPorts : ['in_1'];
+  const outPorts = Array.isArray(bus.outPorts) && bus.outPorts.length ? bus.outPorts : ['out_1'];
+  const st = state || (typeof S !== 'undefined' ? S : null);
+  const wires = Array.isArray(st && st.wires) ? st.wires : [];
+  const inWires = wires.filter(w => w && w.toNode === bus.id && w.wireKind !== 'semantic');
+  const outWires = wires.filter(w => w && w.fromNode === bus.id && w.wireKind !== 'semantic');
+  const seeded = [];
+
+  const legacyRoutes = Array.isArray(bus.hubRoutes) ? bus.hubRoutes : (Array.isArray(bus.routes) ? bus.routes : null);
+  if (legacyRoutes && legacyRoutes.length) {
+    legacyRoutes.forEach((r, idx) => {
+      const fIdx = typeof r.inIdx === 'number'
+        ? r.inIdx
+        : (typeof r.fromIdx === 'number' ? r.fromIdx : Math.max(0, inPorts.indexOf(r.fromPort)));
+      const tIdx = typeof r.outIdx === 'number'
+        ? r.outIdx
+        : (typeof r.toIdx === 'number' ? r.toIdx : Math.max(0, outPorts.indexOf(r.toPort)));
+      seeded.push({
+        id: r.id || `hw_seed_${bus.id}_${idx}`,
+        fromKind: 'in',
+        fromIdx: Math.max(0, Math.min(inPorts.length - 1, fIdx)),
+        toKind: 'out',
+        toIdx: Math.max(0, Math.min(outPorts.length - 1, tIdx))
+      });
+    });
+    return seeded;
+  }
+
+  if (mode === 'combiner') {
+    inPorts.forEach((_, idx) => {
+      seeded.push({
+        id: `hw_comb_in_${bus.id}_${idx}`,
+        fromKind: 'in',
+        fromIdx: idx,
+        toKind: 'script_in',
+        toIdx: idx
+      });
+    });
+    outPorts.forEach((_, idx) => {
+      seeded.push({
+        id: `hw_comb_out_${bus.id}_${idx}`,
+        fromKind: 'script_out',
+        fromIdx: 0,
+        toKind: 'out',
+        toIdx: idx
+      });
+    });
+    return seeded;
+  }
+
+  if (inWires.length === 0 && inPorts.length > 1 && inPorts.length === outPorts.length) {
+    for (let i = 0; i < inPorts.length; i++) {
+      seeded.push({ id: `hw_pass_${bus.id}_${i}`, fromKind: 'in', fromIdx: i, toKind: 'out', toIdx: i });
+    }
+  } else if (inWires.length <= 1 && outPorts.length >= 1) {
+    const singleInIdx = inWires.length === 1 ? Math.max(0, inPorts.indexOf(inWires[0].toPort)) : 0;
+    const fanCount = Math.max(outPorts.length, outWires.length || 1);
+    for (let j = 0; j < Math.min(fanCount, outPorts.length); j++) {
+      seeded.push({ id: `hw_pass_${bus.id}_${j}`, fromKind: 'in', fromIdx: singleInIdx, toKind: 'out', toIdx: j });
+    }
+  } else {
+    inWires.forEach((w, idx) => {
+      const iIdx = Math.max(0, inPorts.indexOf(w.toPort));
+      const oIdx = Math.max(0, Math.min(outPorts.length - 1, iIdx));
+      seeded.push({ id: `hw_pass_${bus.id}_${idx}`, fromKind: 'in', fromIdx: iIdx, toKind: 'out', toIdx: oIdx });
+    });
+  }
+  return seeded;
+}
+
+function ensureHubInternalWiresV191(bus, state) {
+  if (!bus || typeof bus !== 'object') return [];
+  if (!Array.isArray(bus.hubInternalWires)) {
+    bus.hubInternalWires = seedHubInternalWiresListV191(bus, state);
+  }
+  return bus.hubInternalWires;
+}
+window.ensureHubInternalWiresV191 = ensureHubInternalWiresV191;
+
+function resolveHubPinSpecV191(bus, spec, defaultHubId) {
+  if (!spec || typeof spec !== 'object') return { ok: false, error: 'Invalid pin spec' };
+  const hId = spec.hubId || spec.nodeId || defaultHubId;
+  if (hId !== defaultHubId) {
+    return { ok: false, error: '🔒 Hub internal strands must connect ports inside the same Hub' };
+  }
+  const kind = String(spec.kind || spec.pinKind || '').trim();
+  if (!['in', 'out', 'script_in', 'script_out'].includes(kind)) {
+    return { ok: false, error: '🔒 Hub internal strands must connect ports inside the same Hub' };
+  }
+  const inPorts = Array.isArray(bus.inPorts) && bus.inPorts.length ? bus.inPorts : ['in_1'];
+  const outPorts = Array.isArray(bus.outPorts) && bus.outPorts.length ? bus.outPorts : ['out_1'];
+  let idx = spec.idx !== undefined ? Number(spec.idx) : (spec.portIdx !== undefined ? Number(spec.portIdx) : NaN);
+  if (!Number.isFinite(idx) && spec.portName) {
+    if (kind === 'in' || kind === 'script_in') idx = inPorts.indexOf(spec.portName);
+    else if (kind === 'out') idx = outPorts.indexOf(spec.portName);
+    else idx = 0;
+  }
+  if (!Number.isFinite(idx) || idx < 0) idx = 0;
+  idx = Math.floor(idx);
+  const maxIdx = kind === 'out'
+    ? outPorts.length - 1
+    : (kind === 'script_out' ? 0 : inPorts.length - 1);
+  if (idx > Math.max(0, maxIdx)) {
+    return { ok: false, error: 'Hub inner pin index out of bounds' };
+  }
+  return { ok: true, hubId: hId, kind, idx };
+}
+
+function connectHubInnerPinsV191(hubId, fromSpec, toSpec, state) {
+  const st = state || (typeof S !== 'undefined' ? S : null);
+  const bus = st && Array.isArray(st.buses) ? st.buses.find(b => b && b.id === hubId) : null;
+  if (!bus) return { ok: false, wire: null, error: 'Hub not found' };
+
+  const fRes = resolveHubPinSpecV191(bus, fromSpec, hubId);
+  if (!fRes.ok) {
+    if (st === S && typeof setStatus === 'function') setStatus(fRes.error);
+    return { ok: false, wire: null, error: fRes.error };
+  }
+  const tRes = resolveHubPinSpecV191(bus, toSpec, hubId);
+  if (!tRes.ok) {
+    if (st === S && typeof setStatus === 'function') setStatus(tRes.error);
+    return { ok: false, wire: null, error: tRes.error };
+  }
+
+  let src = fRes;
+  let dst = tRes;
+  const pairKey = `${src.kind}->${dst.kind}`;
+  const validForward = pairKey === 'in->out' || pairKey === 'in->script_in' || pairKey === 'script_out->out';
+  const validReverse = pairKey === 'out->in' || pairKey === 'script_in->in' || pairKey === 'out->script_out';
+  if (!validForward && !validReverse) {
+    return { ok: false, wire: null, error: 'Invalid Hub inner pin pair' };
+  }
+  if (validReverse) {
+    const tmp = src;
+    src = dst;
+    dst = tmp;
+  }
+  if ((src.kind === 'script_out' || dst.kind === 'script_in') && bus.hubMode !== 'combiner') {
+    return { ok: false, wire: null, error: 'Script inner pins require Combiner Mode' };
+  }
+
+  ensureHubInternalWiresV191(bus, st);
+  const existing = bus.hubInternalWires.find(w =>
+    w && w.fromKind === src.kind && Number(w.fromIdx) === src.idx && w.toKind === dst.kind && Number(w.toIdx) === dst.idx
+  );
+  if (existing) {
+    const routing = evaluateHubRoutingV190(bus, st);
+    return { ok: true, wire: existing, routing, alreadyExists: true, error: routing.ok ? '' : routing.reason };
+  }
+
+  const wire = {
+    id: (typeof uid === 'function' ? uid('hw') : `hw_${Date.now()}_${bus.hubInternalWires.length + 1}`),
+    fromKind: src.kind,
+    fromIdx: src.idx,
+    toKind: dst.kind,
+    toIdx: dst.idx
+  };
+  bus.hubInternalWires.push(wire);
+  const routing = evaluateHubRoutingV190(bus, st);
+  if (st === S) {
+    if (typeof autoSaveWorkflowState === 'function') autoSaveWorkflowState('hub_inner_wire_connect');
+    if (typeof setStatus === 'function') {
+      setStatus(routing.ok
+        ? `🧵 Connected Hub internal strand inside ${bus.title || bus.id}`
+        : routing.reason);
+    }
+  }
+  return { ok: true, wire, routing, error: routing.ok ? '' : routing.reason };
+}
+window.connectHubInnerPinsV191 = connectHubInnerPinsV191;
+
+function deleteHubInnerWireV191(hubId, wireId, state) {
+  const st = state || (typeof S !== 'undefined' ? S : null);
+  const bus = st && Array.isArray(st.buses) ? st.buses.find(b => b && b.id === hubId) : null;
+  if (!bus) return { ok: false, deleted: false, error: 'Hub not found' };
+  ensureHubInternalWiresV191(bus, st);
+  const before = bus.hubInternalWires.length;
+  bus.hubInternalWires = bus.hubInternalWires.filter(w => w && w.id !== wireId);
+  const deleted = bus.hubInternalWires.length < before;
+  if (deleted && typeof selectedItem !== 'undefined' && selectedItem && selectedItem.kind === 'hub_wire' && selectedItem.id === wireId) {
+    selectedItem = null;
+  }
+  const routing = evaluateHubRoutingV190(bus, st);
+  if (deleted && st === S) {
+    if (typeof autoSaveWorkflowState === 'function') autoSaveWorkflowState('hub_inner_wire_delete');
+    if (typeof setStatus === 'function') setStatus('✂️ Deleted Hub internal strand');
+  }
+  return { ok: deleted, deleted, routing, error: deleted ? '' : 'Internal strand not found' };
+}
+window.deleteHubInnerWireV191 = deleteHubInnerWireV191;
+
+function deleteHubInnerWireAndRenderV191(hubId, wireId, ev) {
+  if (ev && ev.stopPropagation) ev.stopPropagation();
+  if (typeof enterConstructionMode === 'function') enterConstructionMode('delete hub internal strand', false);
+  const res = deleteHubInnerWireV191(hubId, wireId, S);
+  if (typeof renderAll === 'function') renderAll({ preserveInspector: false });
+  return res;
+}
+window.deleteHubInnerWireAndRenderV191 = deleteHubInnerWireAndRenderV191;
+
+function onHubInnerWireClickV191(ev, hubId, wireId) {
+  if (ev && ev.stopPropagation) ev.stopPropagation();
+  if (ev && ev.preventDefault) ev.preventDefault();
+  if (S && S.wireDeleteMode) {
+    return deleteHubInnerWireAndRenderV191(hubId, wireId, ev);
+  }
+  selectedItem = { kind: 'hub_wire', hubId, id: wireId };
+  if (typeof syncSelectedDomClasses === 'function') syncSelectedDomClasses();
+  if (typeof renderAll === 'function') renderAll({ preserveInspector: false });
+  if (typeof setStatus === 'function') setStatus(`🧵 Selected Hub internal strand (${wireId}) — press Del or click Delete in Inspector`);
+  return true;
+}
+window.onHubInnerWireClickV191 = onHubInnerWireClickV191;
+
+function onHubInnerPinMouseDownV191(ev, hubId, kind, idx, portName) {
+  if (ev && ev.stopPropagation) ev.stopPropagation();
+  if (ev && ev.preventDefault) ev.preventDefault();
+  suppressNextHubPinClickV191 = false;
+  if (typeof armedPort !== 'undefined' && armedPort) {
+    armedPort = null;
+    armedHubInnerPin = null;
+    draggingHubInnerPin = null;
+    if (typeof setStatus === 'function') setStatus('🔒 Hub internal strands must connect ports inside the same Hub');
+    if (typeof renderAll === 'function') renderAll({ preserveInspector: true });
+    return false;
+  }
+  draggingHubInnerPin = {
+    hubId,
+    kind,
+    idx: Number(idx) || 0,
+    portName: portName || '',
+    startX: ev && typeof ev.clientX === 'number' ? ev.clientX : 0,
+    startY: ev && typeof ev.clientY === 'number' ? ev.clientY : 0,
+    curX: ev && typeof ev.clientX === 'number' ? ev.clientX : 0,
+    curY: ev && typeof ev.clientY === 'number' ? ev.clientY : 0,
+    moved: false
+  };
+  return true;
+}
+window.onHubInnerPinMouseDownV191 = onHubInnerPinMouseDownV191;
+
+function onHubInnerPinMouseUpV191(ev, hubId, kind, idx, portName) {
+  if (ev && ev.stopPropagation) ev.stopPropagation();
+  if (!draggingHubInnerPin) return false;
+  const src = draggingHubInnerPin;
+  const moved = src.moved || (ev && typeof ev.clientX === 'number' && Math.hypot(ev.clientX - src.startX, ev.clientY - src.startY) > 4);
+  if (!moved) {
+    draggingHubInnerPin = null;
+    return false;
+  }
+  draggingHubInnerPin = null;
+  armedHubInnerPin = null;
+  if (src.hubId === hubId && src.kind === kind && Number(src.idx) === Number(idx)) {
+    suppressNextHubPinClickV191 = true;
+    if (typeof setTimeout === 'function') setTimeout(() => { suppressNextHubPinClickV191 = false; }, 0);
+    if (typeof renderAll === 'function') renderAll({ preserveInspector: true });
+    return false;
+  }
+  if (src.hubId !== hubId) {
+    if (typeof setStatus === 'function') setStatus('🔒 Hub internal strands must connect ports inside the same Hub');
+    if (typeof renderAll === 'function') renderAll({ preserveInspector: true });
+    return false;
+  }
+  if (typeof enterConstructionMode === 'function') enterConstructionMode('connect hub internal strand', false);
+  const res = connectHubInnerPinsV191(hubId, src, { hubId, kind, idx: Number(idx) || 0, portName }, S);
+  if (typeof renderAll === 'function') renderAll({ preserveInspector: false });
+  return res.ok;
+}
+window.onHubInnerPinMouseUpV191 = onHubInnerPinMouseUpV191;
+
+function onHubInnerPinClickV191(ev, hubId, kind, idx, portName) {
+  if (ev && ev.stopPropagation) ev.stopPropagation();
+  if (suppressNextHubPinClickV191) {
+    suppressNextHubPinClickV191 = false;
+    return false;
+  }
+  draggingHubInnerPin = null;
+  if (typeof armedPort !== 'undefined' && armedPort) {
+    armedPort = null;
+    armedHubInnerPin = null;
+    if (typeof setStatus === 'function') setStatus('🔒 Hub internal strands must connect ports inside the same Hub');
+    if (typeof renderAll === 'function') renderAll({ preserveInspector: true });
+    return false;
+  }
+  const numIdx = Number(idx) || 0;
+  if (!armedHubInnerPin) {
+    armedHubInnerPin = { hubId, kind, idx: numIdx, portName: portName || '' };
+    if (typeof setStatus === 'function') {
+      setStatus(`🧵 Armed Hub pin ${portName || `${kind}[${numIdx}]`} — click 2nd inner pin inside the same Hub`);
+    }
+    if (typeof renderAll === 'function') renderAll({ preserveInspector: true });
+    return true;
+  }
+  if (armedHubInnerPin.hubId === hubId && armedHubInnerPin.kind === kind && Number(armedHubInnerPin.idx) === numIdx) {
+    armedHubInnerPin = null;
+    if (typeof setStatus === 'function') setStatus('⚪ Disarmed Hub inner pin');
+    if (typeof renderAll === 'function') renderAll({ preserveInspector: true });
+    return false;
+  }
+  const src = armedHubInnerPin;
+  armedHubInnerPin = null;
+  if (src.hubId !== hubId) {
+    if (typeof setStatus === 'function') setStatus('🔒 Hub internal strands must connect ports inside the same Hub');
+    if (typeof renderAll === 'function') renderAll({ preserveInspector: true });
+    return false;
+  }
+  if (typeof enterConstructionMode === 'function') enterConstructionMode('connect hub internal strand', false);
+  const res = connectHubInnerPinsV191(hubId, src, { hubId, kind, idx: numIdx, portName }, S);
+  if (typeof renderAll === 'function') renderAll({ preserveInspector: false });
+  return res.ok;
+}
+window.onHubInnerPinClickV191 = onHubInnerPinClickV191;
+
+function updateHubInnerDragPreviewV191(clientX, clientY) {
+  if (!draggingHubInnerPin || typeof document === 'undefined') return;
+  const svgEl = document.querySelector(`.hub-internal-wires-svg[data-hub-id="${draggingHubInnerPin.hubId}"]`);
+  if (!svgEl || typeof svgEl.getBoundingClientRect !== 'function') return;
+  const rect = svgEl.getBoundingClientRect();
+  if (!rect || rect.width <= 0 || rect.height <= 0) return;
+  const bus = (S && S.buses || []).find(b => b && b.id === draggingHubInnerPin.hubId);
+  if (!bus) return;
+  const inPorts = Array.isArray(bus.inPorts) && bus.inPorts.length ? bus.inPorts : ['in_1'];
+  const outPorts = Array.isArray(bus.outPorts) && bus.outPorts.length ? bus.outPorts : ['out_1'];
+  const H = Math.max(82, Math.max(inPorts.length, outPorts.length) * 34 + 12);
+  const W = 260;
+  const srcPt = getHubInnerPinSvgPosV191(bus, draggingHubInnerPin.kind, draggingHubInnerPin.idx, W, H);
+  const tx = Math.max(4, Math.min(W - 4, ((clientX - rect.left) / rect.width) * W));
+  const ty = Math.max(4, Math.min(H - 4, ((clientY - rect.top) / rect.height) * H));
+  let prevLine = svgEl.querySelector ? svgEl.querySelector('.hub-inner-wire-preview') : null;
+  if (!prevLine && typeof document.createElementNS === 'function') {
+    prevLine = document.createElementNS('ht' + 'tp://www.w3.org/2000/svg', 'line');
+    prevLine.setAttribute('class', 'hub-inner-wire-preview');
+    prevLine.setAttribute('stroke', '#facc15');
+    prevLine.setAttribute('stroke-width', '1.5');
+    prevLine.setAttribute('stroke-dasharray', '4 3');
+    prevLine.setAttribute('pointer-events', 'none');
+    svgEl.appendChild(prevLine);
+  }
+  if (prevLine && typeof prevLine.setAttribute === 'function') {
+    prevLine.setAttribute('x1', String(srcPt.x));
+    prevLine.setAttribute('y1', String(srcPt.y));
+    prevLine.setAttribute('x2', String(Math.round(tx)));
+    prevLine.setAttribute('y2', String(Math.round(ty)));
+  }
+}
+
+function evaluateHubRoutingV190(bus, state) {
+  const st = state || S;
+  if (!bus || typeof bus !== 'object') {
+    return { ok: false, mode: 'passthrough', reason: 'Hub missing', strands: [], conflictPorts: [] };
+  }
+  const mode = bus.hubMode === 'combiner' ? 'combiner' : 'passthrough';
+  const inPorts = Array.isArray(bus.inPorts) && bus.inPorts.length ? bus.inPorts : ['in_1'];
+  const outPorts = Array.isArray(bus.outPorts) && bus.outPorts.length ? bus.outPorts : ['out_1'];
+  const wiresList = Array.isArray(bus.hubInternalWires)
+    ? bus.hubInternalWires
+    : seedHubInternalWiresListV191(bus, st);
+
+  if (mode === 'combiner') {
+    const combinerScript = String(bus.combinerScript || '').trim() || 'combine_telemetry_manifest.py';
+    const directOutUsage = {};
+    wiresList.forEach(w => {
+      if (w && w.fromKind === 'in' && w.toKind === 'out') {
+        directOutUsage[w.toIdx] = (directOutUsage[w.toIdx] || 0) + 1;
+      }
+    });
+    const conflictIndices = Object.keys(directOutUsage).filter(k => directOutUsage[k] >= 2).map(Number);
+    const conflictPorts = conflictIndices.map(idx => outPorts[idx] || `out_${idx + 1}`);
+    const ok = conflictPorts.length === 0;
+    const strands = wiresList.map((w, idx) => {
+      const fIdx = Math.max(0, Number(w.fromIdx) || 0);
+      const tIdx = Math.max(0, Number(w.toIdx) || 0);
+      const isDirectFanIn = w.fromKind === 'in' && w.toKind === 'out' && conflictIndices.includes(tIdx);
+      const fromPort = w.fromKind === 'script_out' ? combinerScript : (inPorts[fIdx] || `in_${fIdx + 1}`);
+      const toPort = w.toKind === 'script_in' ? (inPorts[tIdx] || combinerScript) : (outPorts[tIdx] || `out_${tIdx + 1}`);
+      return {
+        id: w.id || `hw_c_${idx}`,
+        fromKind: w.fromKind,
+        fromIdx: fIdx,
+        toKind: w.toKind,
+        toIdx: tIdx,
+        toCenter: w.toKind === 'script_in',
+        fromCenter: w.fromKind === 'script_out',
+        fromPort,
+        toPort,
+        blocked: isDirectFanIn
+      };
+    });
+    return {
+      ok,
+      mode: 'combiner',
+      combinerScript,
+      strands,
+      conflictPorts,
+      reason: ok
+        ? `Combiner active (${combinerScript})`
+        : `⛔ Direct bypass fan-in on ${conflictPorts[0]} requires routing through script`
+    };
+  }
+
+  const passRoutes = wiresList.filter(w => w && w.fromKind === 'in' && w.toKind === 'out');
+  const outUsage = {};
+  passRoutes.forEach(r => {
+    const oIdx = Number(r.toIdx) || 0;
+    outUsage[oIdx] = (outUsage[oIdx] || 0) + 1;
+  });
+  const conflictIndices = Object.keys(outUsage).filter(k => outUsage[k] >= 2).map(Number);
+  const conflictPorts = conflictIndices.map(idx => outPorts[idx] || `out_${idx + 1}`);
+  const ok = conflictPorts.length === 0;
+  const conflictLabel = conflictPorts[0] || (outPorts[0] || 'out_1');
+  const strands = passRoutes.map((r, idx) => {
+    const iIdx = Math.max(0, Math.min(inPorts.length - 1, Number(r.fromIdx) || 0));
+    const oIdx = Math.max(0, Math.min(outPorts.length - 1, Number(r.toIdx) || 0));
+    return {
+      id: r.id || `hw_p_${idx}`,
+      fromKind: 'in',
+      fromIdx: iIdx,
+      toKind: 'out',
+      toIdx: oIdx,
+      inIdx: iIdx,
+      outIdx: oIdx,
+      fromPort: inPorts[iIdx] || `in_${iIdx + 1}`,
+      toPort: outPorts[oIdx] || `out_${oIdx + 1}`,
+      blocked: conflictIndices.includes(oIdx)
+    };
+  });
+
+  return {
+    ok,
+    mode: 'passthrough',
+    combinerScript: '',
+    strands,
+    conflictPorts,
+    reason: ok
+      ? '1-to-1 / 1-to-N pass-through valid'
+      : `⛔ Fan-in on ${conflictLabel} requires Combiner Mode`
+  };
+}
+window.evaluateHubRoutingV190 = evaluateHubRoutingV190;
+
+function evaluateGaugeHealthV190(gaugeNode, state) {
+  const st = state || S;
+  if (!gaugeNode || !st) {
+    return { halted: false, brokenWires: [], reason: '' };
+  }
+  const wires = Array.isArray(st.wires) ? st.wires : [];
+  const visitedKeys = new Set([`${gaugeNode.id}:*`]);
+  const queue = [{ nodeId: gaugeNode.id, portName: null }];
+  const brokenWires = [];
+  const seenWireIds = new Set();
+
+  while (queue.length > 0) {
+    const cur = queue.shift();
+    const curKind = getItemKindInStateV190(st, cur.nodeId);
+    let candidateWires = wires.filter(w => w && w.toNode === cur.nodeId && w.wireKind !== 'semantic');
+    if (curKind === 'container' && cur.portName) {
+      const matched = candidateWires.filter(w => w.toPort === cur.portName);
+      if (matched.length > 0) candidateWires = matched;
+    }
+    for (let i = 0; i < candidateWires.length; i++) {
+      const w = candidateWires[i];
+      if (!seenWireIds.has(w.id)) {
+        seenWireIds.add(w.id);
+        const contract = evaluateWireContractV190(w, st);
+        if (!contract.ok) {
+          brokenWires.push({ wireId: w.id, reason: contract.reason, missingVars: contract.missingVars });
+        }
+      }
+      const fromObj = findItemInStateV190(st, w.fromNode);
+      const fromKind = getItemKindInStateV190(st, w.fromNode);
+      if (fromObj && fromKind === 'bus') {
+        const hubRoute = evaluateHubRoutingV190(fromObj, st);
+        if (!hubRoute.ok && !seenWireIds.has(`hub:${fromObj.id}`)) {
+          seenWireIds.add(`hub:${fromObj.id}`);
+          brokenWires.push({ wireId: `hub:${fromObj.id}`, reason: hubRoute.reason, missingVars: [] });
+        }
+      }
+      const nextPort = fromKind === 'container' ? (w.fromPort || null) : null;
+      const nextKey = `${w.fromNode}:${nextPort || '*'}`;
+      if (!visitedKeys.has(nextKey)) {
+        visitedKeys.add(nextKey);
+        queue.push({ nodeId: w.fromNode, portName: nextPort });
+      }
+    }
+  }
+
+  const halted = brokenWires.length > 0;
+  return {
+    halted,
+    brokenWires,
+    reason: halted ? `⏸ Halted: Upstream Red Wire (${brokenWires[0].reason})` : ''
+  };
+}
+window.evaluateGaugeHealthV190 = evaluateGaugeHealthV190;
+
+function resolveDynamicPortDisplayLabelV190(item, portName, dir, state) {
+  const st = state || S;
+  if (!item || !st || !Array.isArray(st.wires)) return String(portName || '');
+  const wires = st.wires;
+  if (dir === 'in') {
+    const inWire = wires.find(w => w && w.toNode === item.id && w.toPort === portName && w.wireKind !== 'semantic');
+    if (inWire) {
+      const src = findItemInStateV190(st, inWire.fromNode);
+      const srcSlug = resolveEndpointSlugV190(src);
+      const upLabel = `${srcSlug}.${inWire.fromPort}`;
+      if (getItemKindInStateV190(st, item.id) === 'bus') {
+        return upLabel;
+      }
+      return `${portName} ← ${upLabel}`;
+    }
+  } else if (dir === 'out') {
+    const outWire = wires.find(w => w && w.fromNode === item.id && w.fromPort === portName && w.wireKind !== 'semantic');
+    if (outWire) {
+      const dst = findItemInStateV190(st, outWire.toNode);
+      const dstSlug = resolveEndpointSlugV190(dst);
+      const dstLabel = `${dstSlug}.${outWire.toPort}`;
+      if (getItemKindInStateV190(st, item.id) === 'bus') {
+        return dstLabel;
+      }
+      return `${portName} → ${dstLabel}`;
+    }
+  }
+  return String(portName || '');
+}
+window.resolveDynamicPortDisplayLabelV190 = resolveDynamicPortDisplayLabelV190;
+
+function getConnectedUpstreamTapVarsV190(gaugeNode, state) {
+  const st = state || S;
+  const vars = [];
+  if (!gaugeNode || !st) return vars;
+  const wires = Array.isArray(st.wires) ? st.wires : [];
+  wires.forEach(w => {
+    if (!w || w.toNode !== gaugeNode.id || w.wireKind === 'semantic') return;
+    const up = resolveItemOutputManifestV190(w.fromNode, w.fromPort, st, new Set());
+    (up.vars || []).forEach(v => {
+      if (!vars.includes(v)) vars.push(v);
+    });
+    const src = findItemInStateV190(st, w.fromNode);
+    if (src && Array.isArray(src.outPorts)) {
+      src.outPorts.forEach(p => {
+        if (p && !vars.includes(p)) vars.push(p);
+      });
+    }
+  });
+  if (gaugeNode.tapVariable && !vars.includes(gaugeNode.tapVariable)) {
+    vars.unshift(gaugeNode.tapVariable);
+  }
+  return vars;
+}
+
+function buildGaugeSvgV190(node, health) {
+  const style = node.gaugeStyle || (node.gaugeMode === 'pass_fail' ? 'dial' : (node.gaugeMode === 'event_log' ? 'timeseries' : 'digital'));
+  const halted = Boolean(health && health.halted);
+  const series = Array.isArray(node.gaugeSeries) && node.gaugeSeries.length
+    ? node.gaugeSeries.map(Number).filter(Number.isFinite)
+    : [Number(node.gaugeCount) || 0];
+  const latest = series.length ? series[series.length - 1] : 0;
+  const prev = series.length > 1 ? series[series.length - 2] : latest;
+  const decimals = Number.isFinite(Number(node.gaugeDecimals)) ? Number(node.gaugeDecimals) : (Number.isInteger(latest) ? 0 : 1);
+  const unit = node.gaugeUnit || (node.tapVariable === 'pass_rate' ? '%' : (node.tapVariable === 'elapsed_ms' ? 'ms' : ''));
+  const color = halted ? '#ef4444' : (style === 'dial' ? '#a7c080' : (style === 'timeseries' ? '#dbbc7f' : '#7fbbb3'));
+
+  let visualHtml = '';
+  if (style === 'dial') {
+    const minV = Number.isFinite(Number(node.gaugeMin)) ? Number(node.gaugeMin) : 0;
+    const maxV = Number.isFinite(Number(node.gaugeMax)) ? Number(node.gaugeMax) : 100;
+    const pct = Math.max(0, Math.min(1, (latest - minV) / ((maxV - minV) || 1)));
+    const ang = -Math.PI + pct * Math.PI;
+    const cx = 85;
+    const cy = 80;
+    const r = 56;
+    const ax = cx + r * Math.cos(ang);
+    const ay = cy + r * Math.sin(ang);
+    const nx = cx + 45 * Math.cos(ang);
+    const ny = cy + 45 * Math.sin(ang);
+    visualHtml =
+      `<svg width="170" height="92" viewBox="0 0 170 92" aria-label="Dial Gauge">` +
+      `<path d="M 29 80 A 56 56 0 0 1 141 80" fill="none" stroke="#2d353b" stroke-width="9" stroke-linecap="round"/>` +
+      `<path d="M 29 80 A 56 56 0 0 1 ${ax.toFixed(1)} ${ay.toFixed(1)}" fill="none" stroke="${color}" stroke-width="9" stroke-linecap="round"/>` +
+      `<line x1="85" y1="80" x2="${nx.toFixed(1)}" y2="${ny.toFixed(1)}" stroke="#ece6d8" stroke-width="2.2" stroke-linecap="round"/>` +
+      `<circle cx="85" cy="80" r="4" fill="${color}"/>` +
+      `<text x="85" y="65" text-anchor="middle" fill="#ece6d8" font-family="Consolas, monospace" font-size="14" font-weight="700">${latest.toFixed(decimals)}${escSvgXml(unit)}</text>` +
+      `</svg>`;
+  } else if (style === 'digital') {
+    const delta = latest - prev;
+    const sign = delta >= 0 ? '▲ +' : '▼ ';
+    const minVal = Math.min.apply(null, series);
+    const maxVal = Math.max.apply(null, series);
+    const avgVal = series.reduce((a, b) => a + b, 0) / (series.length || 1);
+    visualHtml =
+      `<div class="gauge-digital-card">` +
+      `<div class="gauge-digital-val" style="color:${color};">${latest.toFixed(decimals)} <span style="font-size:11px;color:var(--fg1);">${escSvgXml(unit)}</span></div>` +
+      `<div style="font-family:Consolas,monospace;font-size:9.5px;color:${halted ? '#fecaca' : '#7fbbb3'};">${sign}${delta.toFixed(decimals)} ${escSvgXml(unit)} vs prev</div>` +
+      `<div class="gauge-digital-meta"><span>MIN ${minVal.toFixed(decimals)}</span><span>AVG ${avgVal.toFixed(decimals)}</span><span>PEAK ${maxVal.toFixed(decimals)}</span></div>` +
+      `</div>`;
+  } else {
+    const w = 220;
+    const h = 72;
+    const padX = 8;
+    const padY = 9;
+    const minVal = Math.min.apply(null, series);
+    const maxVal = Math.max.apply(null, series);
+    const span = (maxVal - minVal) || 1;
+    const pts = series.map((val, idx) => {
+      const x = series.length === 1 ? w / 2 : padX + (idx / (series.length - 1)) * (w - padX * 2);
+      const y = h - padY - ((val - minVal) / span) * (h - padY * 2);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+    const lastPt = pts[pts.length - 1].split(',');
+    const areaPts = `${pts.join(' ')} ${w - padX},${h - padY} ${padX},${h - padY}`;
+    visualHtml =
+      `<div style="width:100%;display:flex;justify-content:space-between;font-family:Consolas,monospace;font-size:9.5px;margin-bottom:2px;">` +
+      `<span style="color:var(--fg1);">${escSvgXml(node.tapVariable || 'series')}</span>` +
+      `<strong style="color:${color};">${latest.toFixed(decimals)} ${escSvgXml(unit)}</strong>` +
+      `</div>` +
+      `<svg width="100%" height="72" viewBox="0 0 ${w} ${h}" aria-label="Timeseries Sparkline">` +
+      `<line x1="8" y1="36" x2="212" y2="36" stroke="rgba(236,230,216,0.14)" stroke-dasharray="3 3"/>` +
+      `<polygon points="${areaPts}" fill="${color}" fill-opacity="0.16"/>` +
+      `<polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="2.1" stroke-linejoin="round" stroke-linecap="round"/>` +
+      `<circle cx="${lastPt[0]}" cy="${lastPt[1]}" r="3.4" fill="${color}"/>` +
+      `</svg>`;
+  }
+
+  return `<div class="node-gauge-chart-wrap" data-gauge-style="${escSvgXml(style)}">${visualHtml}${halted ? `<div class="gauge-halt-banner">⏸ Halted: Upstream Red Wire</div>` : ''}</div>`;
+}
+
+function getHubInnerPinSvgPosV191(bus, kind, idx, W, H) {
+  const inPorts = Array.isArray(bus.inPorts) && bus.inPorts.length ? bus.inPorts : ['in_1'];
+  const outPorts = Array.isArray(bus.outPorts) && bus.outPorts.length ? bus.outPorts : ['out_1'];
+  const pinY = (i, total) => total <= 1 ? Math.round(H / 2) : Math.round(20 + i * ((H - 40) / (total - 1)));
+  if (kind === 'in') {
+    return { x: 24, y: pinY(Math.max(0, Math.min(inPorts.length - 1, Number(idx) || 0)), inPorts.length) };
+  }
+  if (kind === 'out') {
+    return { x: W - 24, y: pinY(Math.max(0, Math.min(outPorts.length - 1, Number(idx) || 0)), outPorts.length) };
+  }
+  if (kind === 'script_in') {
+    const cnt = inPorts.length || 1;
+    const i = Math.max(0, Math.min(cnt - 1, Number(idx) || 0));
+    const offset = cnt <= 1 ? 0 : (i - (cnt - 1) / 2) * 14;
+    return { x: Math.round(W / 2 - 58), y: Math.round(H / 2 + offset) };
+  }
+  return { x: Math.round(W / 2 + 58), y: Math.round(H / 2) };
+}
+
+function buildHubInternalSvgV190(bus, routing) {
+  const inPorts = Array.isArray(bus.inPorts) && bus.inPorts.length ? bus.inPorts : ['in_1'];
+  const outPorts = Array.isArray(bus.outPorts) && bus.outPorts.length ? bus.outPorts : ['out_1'];
+  const H = Math.max(82, Math.max(inPorts.length, outPorts.length) * 34 + 12);
+  const W = 260;
+  const parts = [];
+  (routing.strands || []).forEach(strand => {
+    const fKind = strand.fromKind || (strand.fromCenter ? 'script_out' : 'in');
+    const fIdx = strand.fromIdx !== undefined ? strand.fromIdx : (strand.inIdx || 0);
+    const tKind = strand.toKind || (strand.toCenter ? 'script_in' : 'out');
+    const tIdx = strand.toIdx !== undefined ? strand.toIdx : (strand.outIdx || 0);
+    const p1 = getHubInnerPinSvgPosV191(bus, fKind, fIdx, W, H);
+    const p2 = getHubInnerPinSvgPosV191(bus, tKind, tIdx, W, H);
+    const dx = Math.max(16, Math.abs(p2.x - p1.x) * 0.45);
+    const d = `M ${p1.x} ${p1.y} C ${Math.round(p1.x + dx)} ${p1.y}, ${Math.round(p2.x - dx)} ${p2.y}, ${p2.x} ${p2.y}`;
+    let clr = '#7fbbb3';
+    if (strand.blocked) {
+      clr = '#ef4444';
+    } else if (fKind === 'script_out') {
+      clr = '#c084fc';
+    } else if (tKind === 'script_in') {
+      clr = '#7fbbb3';
+    } else if (routing.mode === 'passthrough') {
+      clr = (tIdx % 2 === 1) ? '#a7c080' : '#7fbbb3';
+    }
+    const dash = strand.blocked ? ' stroke-dasharray="5 3"' : '';
+    const wId = escSvgXml(strand.id || `hw_${fKind}_${fIdx}_${tKind}_${tIdx}`);
+    const isSel = Boolean(
+      typeof selectedItem !== 'undefined' && selectedItem &&
+      selectedItem.kind === 'hub_wire' &&
+      selectedItem.hubId === bus.id &&
+      selectedItem.id === strand.id
+    );
+    if (isSel) {
+      parts.push(`<path class="hub-inner-wire-halo" data-hub-id="${escSvgXml(bus.id)}" data-hub-wire-id="${wId}" d="${d}" fill="none" stroke="#facc15" stroke-width="5" opacity="0.46" pointer-events="none" />`);
+    }
+    parts.push(`<path class="hub-inner-wire-path${strand.blocked ? ' hub-inner-wire-blocked' : ''}${isSel ? ' hub-inner-wire-selected' : ''}" data-hub-id="${escSvgXml(bus.id)}" data-hub-wire-id="${wId}" d="${d}" fill="none" stroke="${isSel ? '#facc15' : clr}" stroke-width="1.5" stroke-linecap="round"${dash} opacity="0.94" pointer-events="none" />`);
+    parts.push(`<path class="hub-inner-wire-hit no-drag" data-hub-id="${escSvgXml(bus.id)}" data-hub-wire-id="${wId}" d="${d}" fill="none" stroke="transparent" stroke-width="10" style="pointer-events:stroke;cursor:pointer;" onclick="onHubInnerWireClickV191(event, '${escSvgXml(bus.id)}', '${wId}')" onmousedown="event.stopPropagation()" />`);
+  });
+  return `<svg class="hub-internal-wires-svg" data-hub-id="${escSvgXml(bus.id)}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="overflow:hidden;" aria-hidden="true">${parts.join('')}</svg>`;
+}
+
+function buildScriptSubnodeHtmlV190(node, state) {
+  const sub = (node && node.scriptSubnode && typeof node.scriptSubnode === 'object') ? node.scriptSubnode : null;
+  const scriptName = (sub && sub.scriptName) || node.scriptBinding || '';
+  if (!scriptName) return '';
+  const reads = sub && Array.isArray(sub.readsVars) ? sub.readsVars : [];
+  const writes = sub && Array.isArray(sub.writesVars)
+    ? sub.writesVars
+    : (Array.isArray(node.emittedVars) ? node.emittedVars : []);
+  const carrier = node.carrierType || 'JSON';
+  const mode = getWireDetailModeV190(state);
+  const expanded = typeof node._subnodeExpandOverride === 'boolean'
+    ? node._subnodeExpandOverride
+    : (mode === 'full_contracts');
+
+  if (!expanded) {
+    return (
+      `<div class="script-subnode-bar no-drag" data-script-subnode="${escSvgXml(node.id)}" onclick="toggleNodeScriptSubnodeExpandV190('${node.id}', event)" onmousedown="event.stopPropagation()" title="Click to expand/collapse inner Script-as-Subnode I/O pins">` +
+      `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">🐍 ${escSvgXml(scriptName)} · ${reads.length} in → ${writes.length} out [${escSvgXml(carrier)}]</span>` +
+      `<span style="color:var(--fg1);font-size:9px;flex-shrink:0;">▸</span>` +
+      `</div>`
+    );
+  }
+
+  const st = state || S;
+  const inWires = (st && Array.isArray(st.wires))
+    ? st.wires.filter(w => w && w.toNode === node.id && w.wireKind !== 'semantic')
+    : [];
+  const upManifestVars = [];
+  inWires.forEach(w => {
+    const up = resolveItemOutputManifestV190(w.fromNode, w.fromPort, st, new Set());
+    (up.vars || []).forEach(v => { if (!upManifestVars.includes(v)) upManifestVars.push(v); });
+  });
+  const aliases = (sub && sub.keyAliases && typeof sub.keyAliases === 'object') ? sub.keyAliases : {};
+  const outputMode = sub && sub.outputMode === 'enrich_forward' ? 'enrich_forward' : 'script_only';
+
+  const readsHtml = reads.length ? reads.map(rv => {
+    const directOk = inWires.length === 0 || upManifestVars.includes(rv);
+    const aliasSrc = aliases[rv] ? String(aliases[rv]).trim() : '';
+    const aliasOk = !directOk && Boolean(aliasSrc && upManifestVars.includes(aliasSrc));
+    const cls = directOk ? 'pin-ok' : (aliasOk ? 'pin-aliased' : 'pin-missing');
+    const lbl = aliasOk ? `${aliasSrc}→${rv}` : rv;
+    return `<span class="script-pin-chip ${cls}">${escSvgXml(lbl)}</span>`;
+  }).join('') : `<span style="color:var(--fg1);font-size:9px;">(root inputs)</span>`;
+
+  const aliasEntries = Object.entries(aliases).filter(([, src]) => Boolean(src));
+  const aliasHtml = aliasEntries.length
+    ? `<div style="margin-top:3px;color:#fde68a;font-size:8.5px;">${aliasEntries.map(([k, v]) => `${escSvgXml(v)}→${escSvgXml(k)}`).join(', ')}</div>`
+    : '';
+  const forwarded = outputMode === 'enrich_forward'
+    ? upManifestVars.filter(v => !writes.includes(v))
+    : [];
+  const writesHtml = writes.map(wv => `<span class="script-pin-chip pin-ok">${escSvgXml(wv)}</span>`).join('')
+    + forwarded.map(fv => `<span class="script-pin-chip pin-forwarded">${escSvgXml(fv)} (in)</span>`).join('');
+
+  return (
+    `<div class="script-subnode-box no-drag" data-script-subnode="${escSvgXml(node.id)}" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()">` +
+    `<div class="script-subnode-head">` +
+    `<strong style="color:#ecfccb;font-family:Consolas,monospace;">🐍 ${escSvgXml(scriptName)}</strong>` +
+    `<span style="display:inline-flex;gap:4px;align-items:center;">` +
+    `<span class="port-carrier-micro">[${escSvgXml(carrier)}]</span>` +
+    `<span style="padding:1px 5px;border-radius:4px;background:rgba(56,189,248,0.16);border:1px solid rgba(56,189,248,0.4);color:#bae6fd;font-size:8.5px;">${outputMode === 'enrich_forward' ? 'Enrich / Forward' : 'Script Only'}</span>` +
+    `<button type="button" class="hdr-mini-btn no-drag" onclick="toggleNodeScriptSubnodeExpandV190('${node.id}', event)" title="Collapse Script-as-Subnode">▾</button>` +
+    `</span>` +
+    `</div>` +
+    `<div class="script-subnode-grid">` +
+    `<div class="script-pin-col">${readsHtml}</div>` +
+    `<div class="script-core-pill"><div>fn run()</div>${aliasHtml}</div>` +
+    `<div class="script-pin-col" style="align-items:flex-end;">${writesHtml}</div>` +
+    `</div>` +
+    `</div>`
+  );
+}
+
+function toggleNodeScriptSubnodeExpandV190(nodeId, ev) {
+  if (ev && ev.stopPropagation) ev.stopPropagation();
+  const node = (S && S.nodes || []).find(n => n && n.id === nodeId);
+  if (!node) return;
+  const curMode = getWireDetailModeV190(S);
+  const curExpanded = typeof node._subnodeExpandOverride === 'boolean'
+    ? node._subnodeExpandOverride
+    : (curMode === 'full_contracts');
+  node._subnodeExpandOverride = !curExpanded;
+  renderAll({ preserveInspector: true });
+}
+window.toggleNodeScriptSubnodeExpandV190 = toggleNodeScriptSubnodeExpandV190;
+
+function ensureScriptSubnodeObjV190(node) {
+  if (!node) return null;
+  if (!node.scriptSubnode || typeof node.scriptSubnode !== 'object') {
+    node.scriptSubnode = {
+      scriptName: node.scriptBinding || 'custom_stage.py',
+      scriptSource: (typeof window !== 'undefined' && window.REAL_PIPELINE_SCRIPTS && window.REAL_PIPELINE_SCRIPTS[node.scriptBinding]) || '',
+      readsVars: Array.isArray(node.readsVars) ? node.readsVars.slice() : [],
+      writesVars: Array.isArray(node.emittedVars) ? node.emittedVars.slice() : [],
+      keyAliases: {},
+      outputMode: 'script_only'
+    };
+  }
+  return node.scriptSubnode;
+}
+
+function updateNodeCarrierTypeV190(nodeId, val) {
+  const item = findItemInStateV190(S, nodeId) || findSelectedObject();
+  if (!item) return null;
+  enterConstructionMode('edit carrier type', false);
+  item.carrierType = String(val || 'JSON').trim() || 'JSON';
+  autoSaveWorkflowState('node_carrier_type');
+  renderAll({ preserveInspector: false });
+  return item;
+}
+window.updateNodeCarrierTypeV190 = updateNodeCarrierTypeV190;
+
+function updateNodeOutputModeV190(nodeId, val) {
+  const node = findItemInStateV190(S, nodeId) || findSelectedObject();
+  if (!node) return null;
+  enterConstructionMode('edit output mode', false);
+  const sub = ensureScriptSubnodeObjV190(node);
+  sub.outputMode = val === 'enrich_forward' ? 'enrich_forward' : 'script_only';
+  autoSaveWorkflowState('node_output_mode');
+  renderAll({ preserveInspector: false });
+  return node;
+}
+window.updateNodeOutputModeV190 = updateNodeOutputModeV190;
+
+function updateNodeKeyAliasesV190(nodeId, rawVal) {
+  const node = findItemInStateV190(S, nodeId) || findSelectedObject();
+  if (!node) return null;
+  enterConstructionMode('edit key aliases', false);
+  const sub = ensureScriptSubnodeObjV190(node);
+  const nextAliases = {};
+  const txt = String(rawVal || '').trim();
+  if (txt.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(txt);
+      if (parsed && typeof parsed === 'object') {
+        Object.entries(parsed).forEach(([k, v]) => {
+          if (String(k).trim() && String(v).trim()) nextAliases[String(k).trim()] = String(v).trim();
+        });
+      }
+    } catch (e) {}
+  } else {
+    txt.split(',').forEach(part => {
+      const pair = part.trim();
+      if (!pair) return;
+      if (pair.includes('=')) {
+        const idx = pair.indexOf('=');
+        const target = pair.slice(0, idx).trim();
+        const src = pair.slice(idx + 1).trim();
+        if (target && src) nextAliases[target] = src;
+      } else if (pair.includes('->')) {
+        const idx = pair.indexOf('->');
+        const src = pair.slice(0, idx).trim();
+        const target = pair.slice(idx + 2).trim();
+        if (target && src) nextAliases[target] = src;
+      }
+    });
+  }
+  sub.keyAliases = nextAliases;
+  autoSaveWorkflowState('node_key_aliases');
+  renderAll({ preserveInspector: true });
+  return node;
+}
+window.updateNodeKeyAliasesV190 = updateNodeKeyAliasesV190;
+
+function updateNodeContractVarsV190(nodeId, field, rawVal) {
+  const node = findItemInStateV190(S, nodeId) || findSelectedObject();
+  if (!node) return null;
+  enterConstructionMode('edit contract vars', false);
+  const list = String(rawVal || '').split(',').map(s => s.trim()).filter(Boolean);
+  const sub = ensureScriptSubnodeObjV190(node);
+  if (field === 'readsVars') {
+    sub.readsVars = list;
+    node.readsVars = list.slice();
+  } else {
+    sub.writesVars = list;
+    node.emittedVars = list.slice();
+  }
+  autoSaveWorkflowState('node_contract_vars');
+  renderAll({ preserveInspector: true });
+  return node;
+}
+window.updateNodeContractVarsV190 = updateNodeContractVarsV190;
+
+function toggleContractBreakTestV190(nodeId) {
+  const node = findItemInStateV190(S, nodeId) || findSelectedObject();
+  if (!node) return null;
+  enterConstructionMode('test contract break', false);
+  const rulesBucket = (S.fileContainers || []).find(fc => fc && (fc.id === 'fc_scoring_rules' || fc.id === 'fc_rules_in'));
+  if (node._contractTestBreakActive && node._contractTestBackup) {
+    const bk = node._contractTestBackup;
+    if (bk.kind === 'bucket_var' && rulesBucket) {
+      rulesBucket.emittedVars = bk.prevVars.slice();
+    } else if (bk.kind === 'hub_var') {
+      const hub = (S.buses || []).find(b => b && b.id === bk.hubId);
+      if (hub) hub.emittedVars = bk.prevVars.slice();
+    } else if (bk.kind === 'alias' && node.scriptSubnode) {
+      node.scriptSubnode.keyAliases = Object.assign({}, bk.prevAliases);
+    }
+    node._contractTestBreakActive = false;
+    delete node._contractTestBackup;
+    setStatus('🟢 Restored contract variables / alias cleanly');
+  } else {
+    if (rulesBucket && Array.isArray(rulesBucket.emittedVars) && rulesBucket.emittedVars.includes('config_map')) {
+      node._contractTestBackup = { kind: 'bucket_var', prevVars: rulesBucket.emittedVars.slice() };
+      rulesBucket.emittedVars = rulesBucket.emittedVars.filter(v => v !== 'config_map');
+      node._contractTestBreakActive = true;
+      setStatus("🔴 Contract Break Active: Dropped 'config_map' from Scoring Rules");
+    } else {
+      const hub = (S.buses || []).find(b => b && Array.isArray(b.emittedVars) && b.emittedVars.includes('config_map'));
+      if (hub) {
+        node._contractTestBackup = { kind: 'hub_var', hubId: hub.id, prevVars: hub.emittedVars.slice() };
+        hub.emittedVars = hub.emittedVars.filter(v => v !== 'config_map');
+        node._contractTestBreakActive = true;
+        setStatus("🔴 Contract Break Active: Dropped 'config_map' from Combiner Hub");
+      } else if (node.scriptSubnode && node.scriptSubnode.keyAliases && Object.keys(node.scriptSubnode.keyAliases).length) {
+        node._contractTestBackup = { kind: 'alias', prevAliases: Object.assign({}, node.scriptSubnode.keyAliases) };
+        node.scriptSubnode.keyAliases = {};
+        node._contractTestBreakActive = true;
+        setStatus('🔴 Contract Break Active: Cleared keyAliases mapping');
+      }
+    }
+  }
+  autoSaveWorkflowState('test_contract_break');
+  renderAll({ preserveInspector: false });
+  return Boolean(node._contractTestBreakActive);
+}
+window.toggleContractBreakTestV190 = toggleContractBreakTestV190;
+
+function toggleAliasBreakTestV190(nodeId) {
+  const node = (S.nodes || []).find(n => n && n.id === nodeId) || findSelectedObject();
+  if (!node) return null;
+  enterConstructionMode('toggle alias', false);
+  const sub = ensureScriptSubnodeObjV190(node);
+  if (sub.keyAliases && sub.keyAliases.records) {
+    node._savedRecordsAlias = sub.keyAliases.records;
+    delete sub.keyAliases.records;
+    setStatus("🔴 Broken Alias: removed 'rows -> records' mapping");
+  } else {
+    sub.keyAliases = sub.keyAliases || {};
+    sub.keyAliases.records = node._savedRecordsAlias || 'rows';
+    setStatus("🟢 Restored Alias: 'rows -> records'");
+  }
+  autoSaveWorkflowState('toggle_alias_break');
+  renderAll({ preserveInspector: false });
+  return sub.keyAliases;
+}
+window.toggleAliasBreakTestV190 = toggleAliasBreakTestV190;
+
+async function copyNodeScriptSourceV190(nodeId) {
+  const item = findItemInStateV190(S, nodeId) || findSelectedObject();
+  if (!item) return false;
+  const sub = item.scriptSubnode || {};
+  const scriptName = sub.scriptName || item.scriptBinding || item.combinerScript || '';
+  const scriptsMap = (typeof window !== 'undefined' && window.REAL_PIPELINE_SCRIPTS) ? window.REAL_PIPELINE_SCRIPTS : {};
+  const src = sub.scriptSource || item.scriptSource || scriptsMap[scriptName] || `# ${scriptName || 'unbound'}`;
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      await navigator.clipboard.writeText(src);
+      setStatus(`📋 Copied ${scriptName || 'script'} source (${src.length} chars)`);
+      return true;
+    }
+  } catch (e) {}
+  setStatus(`🐍 Script source ready (${src.length} chars)`);
+  return false;
+}
+window.copyNodeScriptSourceV190 = copyNodeScriptSourceV190;
+
+function updateWireKindV190(wireId, kind) {
+  const w = (S.wires || []).find(x => x && x.id === wireId);
+  if (!w) return null;
+  enterConstructionMode('edit wire kind', false);
+  w.wireKind = kind === 'semantic' ? 'semantic' : 'data';
+  if (w.wireKind === 'semantic' && !w.relationshipVerb) {
+    w.relationshipVerb = 'GATES';
+    w.label = w.label || 'GATES';
+  }
+  autoSaveWorkflowState('wire_kind');
+  renderAll({ preserveInspector: false });
+  return w;
+}
+window.updateWireKindV190 = updateWireKindV190;
+
+function updateWireRelationshipVerbV190(wireId, verb) {
+  const w = (S.wires || []).find(x => x && x.id === wireId);
+  if (!w) return null;
+  enterConstructionMode('edit semantic verb', false);
+  w.relationshipVerb = String(verb || 'GATES').trim() || 'GATES';
+  w.label = w.relationshipVerb;
+  autoSaveWorkflowState('wire_verb');
+  renderAll({ preserveInspector: true });
+  return w;
+}
+window.updateWireRelationshipVerbV190 = updateWireRelationshipVerbV190;
+
+function renderNodeContractInspectorV190(obj, state) {
+  if (!obj || obj.type === 'gauge') return '';
+  const st = state || S;
+  const sub = obj.scriptSubnode || {};
+  const carrier = obj.carrierType || 'JSON';
+  const outputMode = sub.outputMode === 'enrich_forward' ? 'enrich_forward' : 'script_only';
+  const readsStr = (Array.isArray(sub.readsVars) ? sub.readsVars : (obj.readsVars || [])).join(', ');
+  const writesStr = (Array.isArray(sub.writesVars) ? sub.writesVars : (obj.emittedVars || [])).join(', ');
+  const aliasPairs = Object.entries(sub.keyAliases || {}).map(([k, v]) => `${k}=${v}`).join(', ');
+  const scriptName = sub.scriptName || obj.scriptBinding || '';
+  const scriptsMap = (typeof window !== 'undefined' && window.REAL_PIPELINE_SCRIPTS) ? window.REAL_PIPELINE_SCRIPTS : {};
+  const scriptSource = sub.scriptSource || obj.scriptSource || scriptsMap[scriptName] || '';
+  const inWires = (st && Array.isArray(st.wires))
+    ? st.wires.filter(w => w && w.toNode === obj.id && w.wireKind !== 'semantic')
+    : [];
+  const evals = inWires.map(w => evaluateWireContractV190(w, st));
+  const broken = evals.filter(e => !e.ok);
+  const statusBanner = broken.length
+    ? `<div style="padding:4px 6px;border-radius:4px;background:rgba(239,68,68,0.22);border:1px solid #ef4444;color:#fecaca;font-size:10px;font-weight:700;">🔴 Broken Contract: ${escSvgXml(broken.map(b => b.reason).join('; '))}</div>`
+    : `<div style="padding:4px 6px;border-radius:4px;background:rgba(167,192,128,0.16);border:1px solid rgba(167,192,128,0.48);color:#ecfccb;font-size:10px;font-weight:700;">🟢 Contracts Verified (${evals.length} incoming wire${evals.length === 1 ? '' : 's'})</div>`;
+
+  return `
+    <div style="display:flex;flex-direction:column;gap:6px;background:rgba(127,187,179,0.08);border:1px solid rgba(127,187,179,0.34);padding:8px;border-radius:6px;margin-top:2px;">
+      <strong style="color:var(--aqua);font-size:11px;">🔌 Contract &amp; Script-as-Subnode</strong>
+      ${statusBanner}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
+        <div>
+          <label style="font-size:10px;" for="insp-carrier-type-select">Carrier Type:</label>
+          <select id="insp-carrier-type-select" style="width:100%;" onchange="updateNodeCarrierTypeV190('${obj.id}', this.value)">
+            ${['JSON', 'Files[]', 'CSV', 'Text', 'Metric'].map(c => `<option value="${c}" ${carrier === c ? 'selected' : ''}>${c}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:10px;" for="insp-output-mode-select">Outgoing Mode:</label>
+          <select id="insp-output-mode-select" style="width:100%;" onchange="updateNodeOutputModeV190('${obj.id}', this.value)">
+            <option value="script_only" ${outputMode === 'script_only' ? 'selected' : ''}>Script Outputs Only</option>
+            <option value="enrich_forward" ${outputMode === 'enrich_forward' ? 'selected' : ''}>Enrich / Forward Incoming</option>
+          </select>
+        </div>
+      </div>
+      <label style="font-size:10px;" for="insp-reads-vars-input">Required Input Vars (<code>readsVars</code>):</label>
+      <input type="text" id="insp-reads-vars-input" value="${escSvgXml(readsStr)}" placeholder="records, config_map" onchange="updateNodeContractVarsV190('${obj.id}', 'readsVars', this.value)">
+      <label style="font-size:10px;" for="insp-writes-vars-input">Exported Output Vars (<code>writesVars</code>):</label>
+      <input type="text" id="insp-writes-vars-input" value="${escSvgXml(writesStr)}" placeholder="pass_rate, records_scored" onchange="updateNodeContractVarsV190('${obj.id}', 'writesVars', this.value)">
+      <label style="font-size:10px;" for="insp-key-aliases-input">Key Aliases (<code>target=source</code>, e.g. <code>records=rows</code>):</label>
+      <input type="text" id="insp-key-aliases-input" value="${escSvgXml(aliasPairs)}" placeholder="records=rows" onchange="updateNodeKeyAliasesV190('${obj.id}', this.value)">
+      <div style="display:flex;gap:5px;flex-wrap:wrap;">
+        <button type="button" id="insp-btn-test-contract-break" class="hdr-mini-btn" style="flex:1;padding:4px 7px;background:rgba(239,68,68,0.18);border-color:rgba(239,68,68,0.58);color:#fecaca;font-weight:700;" onclick="toggleContractBreakTestV190('${obj.id}')">🧪 Test Contract Break (Drop/Restore 'config_map' or Alias)</button>
+        ${(sub.keyAliases && sub.keyAliases.records) || obj._savedRecordsAlias ? `<button type="button" id="insp-btn-toggle-alias" class="hdr-mini-btn" style="padding:4px 7px;background:rgba(219,188,127,0.18);border-color:rgba(219,188,127,0.55);color:#fef3c7;" onclick="toggleAliasBreakTestV190('${obj.id}')">🔗 Toggle rows→records</button>` : ''}
+      </div>
+      ${scriptSource ? `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;">
+        <span style="font-size:10px;color:#ecfccb;">🐍 Source: <code>${escSvgXml(scriptName)}</code></span>
+        <button type="button" id="insp-btn-copy-script-src" class="hdr-mini-btn" onclick="copyNodeScriptSourceV190('${obj.id}')">📋 Copy Script</button>
+      </div>
+      <textarea id="insp-script-source-view" readonly rows="5" style="font-family:Consolas,monospace;font-size:9.5px;background:#0b1014;color:#a7c080;">${escSvgXml(scriptSource)}</textarea>
+      ` : ''}
+    </div>
+  `;
+}
+
+function getPointAndTangentOnPolylineV190(ptsList, tRaw) {
+  const arr = Array.isArray(ptsList) && ptsList.length >= 2 ? ptsList : [{ x: 0, y: 0 }, { x: 1, y: 0 }];
+  const t = Math.max(0, Math.min(1, Number(tRaw) || 0));
+  const segs = [];
+  let totalLen = 0;
+  for (let i = 0; i < arr.length - 1; i++) {
+    const dx = arr[i + 1].x - arr[i].x;
+    const dy = arr[i + 1].y - arr[i].y;
+    const len = Math.hypot(dx, dy);
+    segs.push({ a: arr[i], b: arr[i + 1], dx, dy, len });
+    totalLen += len;
+  }
+  if (totalLen <= 0.001) return { x: arr[0].x, y: arr[0].y, angle: 0 };
+  let dist = totalLen * t;
+  for (let i = 0; i < segs.length; i++) {
+    const s = segs[i];
+    if (dist <= s.len || i === segs.length - 1) {
+      const frac = s.len > 0.001 ? dist / s.len : 0;
+      const angle = s.len > 0.001 ? (Math.atan2(s.dy, s.dx) * 180 / Math.PI) : 0;
+      return {
+        x: s.a.x + s.dx * frac,
+        y: s.a.y + s.dy * frac,
+        angle
+      };
+    }
+    dist -= s.len;
+  }
+  const last = segs[segs.length - 1];
+  return { x: last.b.x, y: last.b.y, angle: Math.atan2(last.dy, last.dx) * 180 / Math.PI };
+}
+
+function getPointAndTangentOnCubicBezierV190(p1, c1, c2, p2, tRaw) {
+  const t = Math.max(0, Math.min(1, Number(tRaw) || 0));
+  const mt = 1 - t;
+  const x = mt * mt * mt * p1.x + 3 * mt * mt * t * c1.x + 3 * mt * t * t * c2.x + t * t * t * p2.x;
+  const y = mt * mt * mt * p1.y + 3 * mt * mt * t * c1.y + 3 * mt * t * t * c2.y + t * t * t * p2.y;
+  const dx = 3 * mt * mt * (c1.x - p1.x) + 6 * mt * t * (c2.x - c1.x) + 3 * t * t * (p2.x - c2.x);
+  const dy = 3 * mt * mt * (c1.y - p1.y) + 6 * mt * t * (c2.y - c1.y) + 3 * t * t * (p2.y - c2.y);
+  const angle = (Math.abs(dx) + Math.abs(dy) > 0.001) ? (Math.atan2(dy, dx) * 180 / Math.PI) : 0;
+  return { x, y, angle };
+}
+
+function initLeftDrawersPersistenceV190() {
+  if (typeof document === 'undefined' || typeof document.querySelectorAll !== 'function') return;
+  let saved = {};
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(LEFT_DRAWER_STORAGE_KEY_V190) : '';
+    if (raw) saved = JSON.parse(raw) || {};
+  } catch (e) {}
+  const drawers = document.querySelectorAll('details.left-sec-drawer');
+  if (!drawers || !drawers.length) return;
+  Array.prototype.forEach.call(drawers, d => {
+    const key = d.getAttribute ? d.getAttribute('data-drawer-key') : '';
+    if (key && typeof saved[key] === 'boolean') {
+      d.open = saved[key];
+    }
+    if (typeof d.addEventListener === 'function' && !d._v190Bound) {
+      d._v190Bound = true;
+      d.addEventListener('toggle', () => {
+        const snap = {};
+        Array.prototype.forEach.call(document.querySelectorAll('details.left-sec-drawer'), el => {
+          const k = el.getAttribute ? el.getAttribute('data-drawer-key') : '';
+          if (k) snap[k] = Boolean(el.open);
+        });
+        try {
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(LEFT_DRAWER_STORAGE_KEY_V190, JSON.stringify(snap));
+          }
+        } catch (e) {}
+        syncLeftDrawerToolbarBtnV190();
+      });
+    }
+  });
+  syncLeftDrawerToolbarBtnV190();
+}
+
+function syncLeftDrawerToolbarBtnV190() {
+  const btn = typeof document !== 'undefined' ? document.getElementById('btnToggleAllLeftDrawers') : null;
+  if (!btn || typeof document.querySelectorAll !== 'function') return;
+  const drawers = document.querySelectorAll('details.left-sec-drawer');
+  const anyOpen = drawers && Array.prototype.some.call(drawers, d => Boolean(d.open));
+  btn.textContent = anyOpen ? 'Collapse All' : 'Expand All';
+}
+
+function toggleAllLeftDrawersV190(forceOpen) {
+  if (typeof document === 'undefined' || typeof document.querySelectorAll !== 'function') return false;
+  const drawers = document.querySelectorAll('details.left-sec-drawer');
+  const anyOpen = drawers && Array.prototype.some.call(drawers, d => Boolean(d.open));
+  const nextOpen = typeof forceOpen === 'boolean' ? forceOpen : !anyOpen;
+  const snap = {};
+  Array.prototype.forEach.call(drawers || [], d => {
+    d.open = nextOpen;
+    const k = d.getAttribute ? d.getAttribute('data-drawer-key') : '';
+    if (k) snap[k] = nextOpen;
+  });
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(LEFT_DRAWER_STORAGE_KEY_V190, JSON.stringify(snap));
+    }
+  } catch (e) {}
+  syncLeftDrawerToolbarBtnV190();
+  return nextOpen;
+}
+window.toggleAllLeftDrawersV190 = toggleAllLeftDrawersV190;
+
+let v19ReviewState = {};
+
+function loadV19ReviewStateV190() {
+  const base = {};
+  V19_REVIEW_SECTIONS.forEach(sec => {
+    base[sec.id] = { verdict: '', comment: '' };
+  });
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(V19_REVIEW_STORAGE_KEY_V190) : '';
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        V19_REVIEW_SECTIONS.forEach(sec => {
+          if (parsed[sec.id] && typeof parsed[sec.id] === 'object') {
+            base[sec.id] = {
+              verdict: String(parsed[sec.id].verdict || ''),
+              comment: String(parsed[sec.id].comment || '')
+            };
+          }
+        });
+      }
+    }
+  } catch (e) {}
+  return base;
+}
+
+function persistV19ReviewStateV190() {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(V19_REVIEW_STORAGE_KEY_V190, JSON.stringify(v19ReviewState || {}));
+    }
+  } catch (e) {}
+}
+
+function setV19ReviewVerdict(sectionId, verdict) {
+  if (!v19ReviewState || !v19ReviewState[sectionId]) v19ReviewState = loadV19ReviewStateV190();
+  v19ReviewState[sectionId] = v19ReviewState[sectionId] || { verdict: '', comment: '' };
+  v19ReviewState[sectionId].verdict = v19ReviewState[sectionId].verdict === verdict ? '' : verdict;
+  persistV19ReviewStateV190();
+  renderV19ReviewPadItemsV190();
+  return v19ReviewState[sectionId];
+}
+window.setV19ReviewVerdict = setV19ReviewVerdict;
+
+function setV19ReviewComment(sectionId, text) {
+  if (!v19ReviewState || !v19ReviewState[sectionId]) v19ReviewState = loadV19ReviewStateV190();
+  v19ReviewState[sectionId] = v19ReviewState[sectionId] || { verdict: '', comment: '' };
+  v19ReviewState[sectionId].comment = String(text || '');
+  persistV19ReviewStateV190();
+  return v19ReviewState[sectionId];
+}
+window.setV19ReviewComment = setV19ReviewComment;
+
+function formatV19ReviewMarkdown(reviewState, stateObj) {
+  const rs = reviewState || v19ReviewState || {};
+  const st = stateObj || S || {};
+  const verLabel = (typeof window !== 'undefined' && window.__SANDBOX_PREVIEW_VERSION__) ? window.__SANDBOX_PREVIEW_VERSION__ : 'v1.9.0 Preview';
+  const lines = [
+    `### SandboxWorkflow ${verLabel} — Director Review Notes`,
+    `- **Workflow**: ${st.title || st.workflowId || 'v190_telemetry_pipeline'}`,
+    `- **Wire Detail Mode**: \`${getWireDetailModeV190(st)}\``,
+    ''
+  ];
+  V19_REVIEW_SECTIONS.forEach(sec => {
+    const entry = rs[sec.id] || { verdict: '', comment: '' };
+    const verdict = entry.verdict || 'Unreviewed';
+    const note = (entry.comment || '').trim() || 'No notes entered.';
+    lines.push(`- **${sec.title}** [${verdict}]: ${note}`);
+  });
+  return lines.join('\n');
+}
+window.formatV19ReviewMarkdown = formatV19ReviewMarkdown;
+
+function renderV19ReviewPadItemsV190() {
+  const box = typeof document !== 'undefined' ? document.getElementById('v19ReviewItemsList') : null;
+  if (!box) return;
+  const verdicts = ['Looks Right', 'Tweak Needed', 'Issue Found'];
+  box.innerHTML = V19_REVIEW_SECTIONS.map(sec => {
+    const cur = (v19ReviewState && v19ReviewState[sec.id]) || { verdict: '', comment: '' };
+    return (
+      `<div class="v19-review-card">` +
+      `<div style="font-weight:700;color:var(--gold);">${escSvgXml(sec.title)}</div>` +
+      `<div class="v19-verdict-row">` +
+      verdicts.map(v => `<button type="button" class="v19-verdict-btn ${cur.verdict === v ? 'active' : ''}" onclick="setV19ReviewVerdict('${sec.id}', '${v}')">${v}</button>`).join('') +
+      `</div>` +
+      `<textarea rows="2" placeholder="Feedback or tweak notes..." oninput="setV19ReviewComment('${sec.id}', this.value)">${escSvgXml(cur.comment || '')}</textarea>` +
+      `</div>`
+    );
+  }).join('');
+}
+
+function toggleV19ReviewPopover(ev, forceOpen) {
+  if (ev && ev.stopPropagation) ev.stopPropagation();
+  const pop = typeof document !== 'undefined' ? document.getElementById('v19ReviewPopover') : null;
+  if (!pop || !pop.classList) return false;
+  const nextOpen = typeof forceOpen === 'boolean' ? forceOpen : !pop.classList.contains('open');
+  pop.classList.toggle('open', nextOpen);
+  if (nextOpen) {
+    if (typeof toggleGithubFeedbackPopover === 'function') toggleGithubFeedbackPopover(null, false);
+    const hPop = document.getElementById('hotkeyHelpPopover');
+    if (hPop && hPop.classList) hPop.classList.remove('open');
+    if (!Object.keys(v19ReviewState || {}).length) v19ReviewState = loadV19ReviewStateV190();
+    renderV19ReviewPadItemsV190();
+  }
+  return nextOpen;
+}
+window.toggleV19ReviewPopover = toggleV19ReviewPopover;
+
+async function copyV19ReviewSlackV190() {
+  const md = formatV19ReviewMarkdown(v19ReviewState, S);
+  const statusEl = typeof document !== 'undefined' ? document.getElementById('v19ReviewCopyStatus') : null;
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      await navigator.clipboard.writeText(md);
+      if (statusEl) statusEl.textContent = '✅ Copied Markdown review notes!';
+      setStatus('📋 Copied v1.9 Review Markdown notes');
+      return md;
+    }
+  } catch (e) {}
+  if (statusEl) statusEl.textContent = 'ℹ️ Review Markdown generated (clipboard unavailable in headless context).';
+  return md;
+}
+window.copyV19ReviewSlackV190 = copyV19ReviewSlackV190;
+
+function initV19ReviewPadV190() {
+  v19ReviewState = loadV19ReviewStateV190();
+  renderV19ReviewPadItemsV190();
+}
+
+
 const workflowSyncConfig = {
   manifestUrl: '',
   syncEndpoint: '',
@@ -59,12 +1896,12 @@ function makeFallbackPngDataUrl(size = 8) {
 }
 
 const STANDARD_UTILITY_CATALOG = [
-  { key: 'Data Loader', icon: '📥', category: 'Input Stage', inPorts: ['source_path', 'config'], outPorts: ['records_out', 'schema'], script: 'modules/data_loader.py' },
-  { key: 'Quality Filter', icon: '🔍', category: 'Validation', inPorts: ['records_in', 'rules'], outPorts: ['valid_rows', 'rejected_rows'], script: 'modules/quality_filter.py' },
-  { key: 'Transform Step', icon: '⚙️', category: 'Processor', inPorts: ['valid_rows'], outPorts: ['transformed_data', 'stats'], script: 'modules/transform_step.py' },
-  { key: 'Metrics Aggregator', icon: '📊', category: 'Analytics', inPorts: ['transformed_data', 'stats'], outPorts: ['summary_metrics', 'chart_data'], script: 'modules/metrics_aggregator.py' },
-  { key: 'Report Builder', icon: '📑', category: 'Formatter', inPorts: ['summary_metrics'], outPorts: ['report_html', 'summary_csv'], script: 'modules/report_builder.py' },
-  { key: 'Validation Gate', icon: '✅', category: 'QA Gate', inPorts: ['report_html', 'manifest'], outPorts: ['approved_bundle'], script: 'modules/validation_gate.py' }
+  { key: 'Data Loader', icon: '📥', category: 'Input Stage', inPorts: ['source_path', 'config'], outPorts: ['records_out', 'schema'], script: 'STUB_data_loader.py' },
+  { key: 'Quality Filter', icon: '🔍', category: 'Validation', inPorts: ['records_in', 'rules'], outPorts: ['valid_rows', 'rejected_rows'], script: 'STUB_quality_filter.py' },
+  { key: 'Transform Step', icon: '⚙️', category: 'Processor', inPorts: ['valid_rows'], outPorts: ['transformed_data', 'stats'], script: 'STUB_transform_step.py' },
+  { key: 'Metrics Aggregator', icon: '📊', category: 'Analytics', inPorts: ['transformed_data', 'stats'], outPorts: ['summary_metrics', 'chart_data'], script: 'STUB_metrics_aggregator.py' },
+  { key: 'Report Builder', icon: '📑', category: 'Formatter', inPorts: ['summary_metrics'], outPorts: ['report_html', 'summary_csv'], script: 'STUB_report_builder.py' },
+  { key: 'Validation Gate', icon: '✅', category: 'QA Gate', inPorts: ['report_html', 'manifest'], outPorts: ['approved_bundle'], script: 'STUB_validation_gate.py' }
 ];
 
 function isOfflineStandaloneMode() {
@@ -74,9 +1911,9 @@ function isOfflineStandaloneMode() {
 
 function syncOfflineModeUI() {
   const badge = document.getElementById('modeBadge');
-  if (badge) badge.textContent = 'v1.8.1';
+  if (badge) badge.textContent = 'v1.9.1';
   const engBadge = document.getElementById('engineVersionBadge');
-  if (engBadge) engBadge.textContent = 'Engine: SandboxWorkflow v1.8.1';
+  if (engBadge) engBadge.textContent = 'Engine: SandboxWorkflow v1.9.1';
 }
 
 function loadStoredCustomTemplates() {
@@ -107,6 +1944,7 @@ function createBlankWorkflowState() {
     workflowStatus: 'sandbox',
     editUnlocked: true,
     wireStyle: 'schematic',
+    wireDetailMode: 'clean_errors',
     wireSelectMode: false,
     wireDeleteMode: false,
     activeBrushColor: '#38bdf8',
@@ -150,7 +1988,7 @@ function createExampleWorkflowState() {
       title: 'Category A: Incoming Orders Stage',
       inPorts: ['order_in'],
       outPorts: ['validated_out'],
-      bottomPorts: ['audit_bus'],
+      bottomPorts: [],
       notes: ['- Check order format', '- Verify item count'],
       collapsed: false,
       x: 60, y: 60, w: 295, h: 195
@@ -160,7 +1998,7 @@ function createExampleWorkflowState() {
       title: 'Black-Box Subsystem: Packaging Unit',
       inPorts: ['pkg_in'],
       outPorts: ['pkg_out'],
-      bottomPorts: ['telemetry_tap'],
+      bottomPorts: [],
       notes: ['- Click [–] Collapse in header to test Black-Box mode', '- Internal bulkhead wires stay 100% inside container'],
       collapsed: false,
       x: 1280, y: 60, w: 740, h: 390
@@ -172,7 +2010,7 @@ function createExampleWorkflowState() {
       title: 'Subcategory A1: Validation Group',
       inPorts: ['raw_batch'],
       outPorts: ['clean_batch'],
-      bottomPorts: ['status_tap'],
+      bottomPorts: [],
       notes: ['- Validate SKU codes', '- Flag missing fields'],
       collapsed: false,
       x: 60, y: 330, w: 295, h: 195
@@ -198,9 +2036,11 @@ function createExampleWorkflowState() {
       category: 'Input Stage',
       inPorts: ['raw_orders', 'schema_cfg'],
       outPorts: ['parsed_rows', 'batch_meta'],
+      whatThisNodeDoes: ['Parses raw CSV order rows against schema_cfg and emits parsed_rows + batch_meta.'],
+      steps: ['Parses raw CSV order rows against schema_cfg and emits parsed_rows + batch_meta.'],
       params: { format: 'csv', strict: true },
       notes: ['Parses incoming order rows'],
-      scriptBinding: 'modules/parse_input.py',
+      scriptBinding: 'STUB_parse_input.py',
       x: 495, y: 60, w: 255, h: 185
     },
     {
@@ -209,10 +2049,31 @@ function createExampleWorkflowState() {
       category: 'Validation',
       inPorts: ['rows_in'],
       outPorts: ['qc_pass', 'qc_metrics'],
+      whatThisNodeDoes: ['Filters out malformed rows below threshold 0.98 before routing downstream.'],
+      steps: ['Filters out malformed rows below threshold 0.98 before routing downstream.'],
       params: { threshold: 0.98, max_retries: 2 },
       notes: ['Filters out malformed items'],
-      scriptBinding: 'modules/quality_check.py',
+      scriptBinding: 'STUB_quality_check.py',
       x: 495, y: 330, w: 255, h: 185
+    },
+    {
+      id: 'n_gauge_audit',
+      title: '📊 Step 4: Batch Audit Gauge',
+      type: 'gauge',
+      category: '📊 GAUGE / LOGGER',
+      inPorts: ['tap_in'],
+      outPorts: [],
+      gaugeMode: 'pass_fail',
+      gaugeCount: 0,
+      gaugeStatus: 'IDLE',
+      gaugeLogs: [],
+      gaugeDisplay: '⚪ IDLE · Runs: 0',
+      whatThisNodeDoes: ['Input-only measurement sink capturing Batch Check Gate pass/fail signals.'],
+      steps: ['Input-only measurement sink capturing Batch Check Gate pass/fail signals.'],
+      params: { sink_mode: 'pass_fail' },
+      notes: ['Captures Cell 1 gate_tap'],
+      scriptBinding: '',
+      x: 495, y: 610, w: 280, h: 195
     },
     {
       id: 'n_sealer',
@@ -220,9 +2081,11 @@ function createExampleWorkflowState() {
       category: 'Packaging',
       inPorts: ['items_in'],
       outPorts: ['sealed_box'],
+      whatThisNodeDoes: ['Prepares validated items into sealed packaging units inside Black-Box Subsystem.'],
+      steps: ['Prepares validated items into sealed packaging units inside Black-Box Subsystem.'],
       params: { tape_width_mm: 48 },
       notes: ['Inside Black-Box Subsystem'],
-      scriptBinding: 'modules/box_sealer.py',
+      scriptBinding: 'STUB_box_sealer.py',
       x: 1335, y: 220, w: 255, h: 185
     },
     {
@@ -231,22 +2094,26 @@ function createExampleWorkflowState() {
       category: 'Packaging',
       inPorts: ['box_in'],
       outPorts: ['labeled_pkg'],
+      whatThisNodeDoes: ['Applies shipping barcode metadata and emits labeled_pkg out of the subsystem.'],
+      steps: ['Applies shipping barcode metadata and emits labeled_pkg out of the subsystem.'],
       params: { dpi: 300 },
       notes: ['Prints shipping barcode'],
-      scriptBinding: 'modules/label_printer.py',
+      scriptBinding: 'STUB_label_printer.py',
       x: 1690, y: 220, w: 255, h: 185
     }
   ];
   st.buses = [
     {
       id: 'bus_main',
-      title: '⚡ Main Distribution Bus',
+      title: '🔀 Main Routing Hub',
       orientation: 'left-right',
+      hubMode: 'passthrough',
+      combinerScript: '',
       inPorts: ['in_1', 'in_2', 'in_3'],
-      outPorts: ['out_1', 'out_2'],
-      bottomPorts: ['bus_tap'],
-      notes: ['Routes validated streams to downstream packaging & archive'],
-      x: 890, y: 180, w: 250, h: 195
+      outPorts: ['out_1', 'out_2', 'out_3'],
+      bottomPorts: [],
+      notes: ['Passthrough organizer routing validated streams 1-to-1 to packaging & archive'],
+      x: 890, y: 180, w: 260, h: 205
     }
   ];
   st.fileContainers = [
@@ -266,13 +2133,14 @@ function createExampleWorkflowState() {
     { id: 'w_demo_3', fromNode: 'n_parse', fromPort: 'parsed_rows', toNode: 'bus_main', toPort: 'in_1' },
     { id: 'w_demo_4', fromNode: 'n_qc', fromPort: 'qc_pass', toNode: 'bus_main', toPort: 'in_2' },
     { id: 'w_demo_5', fromNode: 'cell_batch', fromPort: 'batch_ok', toNode: 'bus_main', toPort: 'in_3' },
-    { id: 'w_demo_6', fromNode: 'n_parse', fromPort: 'batch_meta', toNode: 'bus_main', toPort: 'in_3' },
+    { id: 'w_demo_tap_1', fromNode: 'cell_batch', fromPort: 'gate_tap', fromDir: 'bottom', toNode: 'n_gauge_audit', toPort: 'tap_in', toDir: 'in' },
     { id: 'w_demo_7', fromNode: 'bus_main', fromPort: 'out_1', toNode: 'cat_blackbox', toPort: 'pkg_in' },
     { id: 'w_demo_7b', fromNode: 'cat_blackbox', fromPort: 'pkg_in', fromDir: 'in', toNode: 'n_sealer', toPort: 'items_in', toDir: 'in' },
     { id: 'w_demo_8', fromNode: 'n_sealer', fromPort: 'sealed_box', toNode: 'n_labeler', toPort: 'box_in' },
     { id: 'w_demo_8b', fromNode: 'n_labeler', fromPort: 'labeled_pkg', fromDir: 'out', toNode: 'cat_blackbox', toPort: 'pkg_out', toDir: 'out' },
     { id: 'w_demo_9', fromNode: 'cat_blackbox', fromPort: 'pkg_out', toNode: 'fc_output', toPort: 'files_in' },
-    { id: 'w_demo_10', fromNode: 'bus_main', fromPort: 'out_2', toNode: 'fc_output', toPort: 'files_in' }
+    { id: 'w_demo_10', fromNode: 'bus_main', fromPort: 'out_2', toNode: 'fc_output', toPort: 'files_in' },
+    { id: 'w_demo_11', fromNode: 'bus_main', fromPort: 'out_3', toNode: 'fc_output', toPort: 'files_in' }
   ];
   return st;
 }
@@ -295,9 +2163,11 @@ function createHelloWorldWorkflowState() {
       category: 'Input',
       inPorts: ['raw_text'],
       outPorts: ['greeting_payload'],
+      whatThisNodeDoes: ['Seeds a sample greeting payload and forwards it to Step 2.'],
+      steps: ['Seeds a sample greeting payload and forwards it to Step 2.'],
       params: { target: 'world' },
       notes: ['Add or rename ports with +In / +Out or Inspector fields'],
-      scriptBinding: 'modules/greeting_input.py',
+      scriptBinding: 'STUB_greeting_input.py',
       x: 120, y: 180, w: 265, h: 195
     },
     {
@@ -307,9 +2177,11 @@ function createHelloWorldWorkflowState() {
       category: 'Output',
       inPorts: ['greeting_in'],
       outPorts: ['formatted_msg'],
+      whatThisNodeDoes: ['Formats incoming greeting payload and emits formatted_msg.'],
+      steps: ['Formats incoming greeting payload and emits formatted_msg.'],
       params: { uppercase: false },
       notes: ['Emits formatted greeting message'],
-      scriptBinding: 'modules/greeting_emit.py',
+      scriptBinding: 'STUB_greeting_emit.py',
       x: 490, y: 180, w: 265, h: 195
     }
   ];
@@ -347,9 +2219,11 @@ function createAlgorithmWorkflowState() {
       category: 'Input',
       inPorts: ['dataset_uri'],
       outPorts: ['clean_records'],
+      whatThisNodeDoes: ['Loads tabular or JSON input batches into the scoring pipeline.'],
+      steps: ['Loads tabular or JSON input batches into the scoring pipeline.'],
       params: { batch_size: 256 },
       notes: ['Loads tabular or JSON input batches'],
-      scriptBinding: 'modules/ingest_batch.py',
+      scriptBinding: 'STUB_ingest_batch.py',
       x: 80, y: 165, w: 260, h: 190
     },
     {
@@ -358,9 +2232,11 @@ function createAlgorithmWorkflowState() {
       category: 'Processor',
       inPorts: ['raw_batch'],
       outPorts: ['scored_rows', 'score_stats'],
+      whatThisNodeDoes: ['Normalizes feature scores and emits scored_rows + score_stats.'],
+      steps: ['Normalizes feature scores and emits scored_rows + score_stats.'],
       params: { method: 'z_score', clamp: true },
       notes: ['Computes normalized weights and confidence'],
-      scriptBinding: 'modules/score_batch.py',
+      scriptBinding: 'STUB_score_batch.py',
       x: 515, y: 190, w: 265, h: 190
     },
     {
@@ -369,10 +2245,31 @@ function createAlgorithmWorkflowState() {
       category: 'QA Gate',
       inPorts: ['candidate_rows'],
       outPorts: ['approved_rows'],
+      whatThisNodeDoes: ['Verifies min_confidence >= 0.95 before publishing approved_rows.'],
+      steps: ['Verifies min_confidence >= 0.95 before publishing approved_rows.'],
       params: { min_confidence: 0.95 },
       notes: ['Verifies schema invariants before publishing'],
-      scriptBinding: 'modules/validate_gate.py',
+      scriptBinding: 'STUB_validate_gate.py',
       x: 855, y: 190, w: 265, h: 190
+    },
+    {
+      id: 'n_algo_gauge',
+      title: '📊 Score Metrics Gauge',
+      type: 'gauge',
+      category: '📊 GAUGE / LOGGER',
+      inPorts: ['tap_in'],
+      outPorts: [],
+      gaugeMode: 'custom_script',
+      gaugeCount: 0,
+      gaugeStatus: 'IDLE',
+      gaugeLogs: [],
+      gaugeDisplay: '🐍 STUB_metric_parser.py · Runs: 0',
+      whatThisNodeDoes: ['Captures Core Scoring Engine bottom metrics_tap signals via STUB_metric_parser.py.'],
+      steps: ['Captures Core Scoring Engine bottom metrics_tap signals via STUB_metric_parser.py.'],
+      params: { sink_mode: 'custom_script' },
+      notes: ['Measurement tap sink'],
+      scriptBinding: 'STUB_metric_parser.py',
+      x: 640, y: 470, w: 285, h: 195
     }
   ];
   st.fileContainers = [
@@ -391,30 +2288,200 @@ function createAlgorithmWorkflowState() {
     { id: 'w_algo_2', fromNode: 'cat_algo_core', fromPort: 'records_in', fromDir: 'in', toNode: 'n_algo_score', toPort: 'raw_batch', toDir: 'in' },
     { id: 'w_algo_3', fromNode: 'n_algo_score', fromPort: 'scored_rows', toNode: 'n_algo_gate', toPort: 'candidate_rows' },
     { id: 'w_algo_4', fromNode: 'n_algo_gate', fromPort: 'approved_rows', fromDir: 'out', toNode: 'cat_algo_core', toPort: 'scored_out', toDir: 'out' },
-    { id: 'w_algo_5', fromNode: 'cat_algo_core', fromPort: 'scored_out', toNode: 'fc_algo_out', toPort: 'bundle_in' }
+    { id: 'w_algo_5', fromNode: 'cat_algo_core', fromPort: 'scored_out', toNode: 'fc_algo_out', toPort: 'bundle_in' },
+    { id: 'w_algo_tap', fromNode: 'cat_algo_core', fromPort: 'metrics_tap', fromDir: 'bottom', toNode: 'n_algo_gauge', toPort: 'tap_in', toDir: 'in' }
   ];
   return st;
 }
 
 let S = window.__INITIAL_SANDBOX_STATE__
   ? JSON.parse(JSON.stringify(window.__INITIAL_SANDBOX_STATE__))
-  : createExampleWorkflowState();
+  : createV191TelemetryPipelineState();
 if (S && typeof S === 'object') {
   S.wireSelectMode = false;
   S.wireDeleteMode = false;
 }
 
+
+function extractWhatThisNodeDoesLines(node) {
+  if (!node || typeof node !== 'object') return [];
+  if (Array.isArray(node.whatThisNodeDoes) && node.whatThisNodeDoes.length) {
+    return node.whatThisNodeDoes.map(s => String(s || '').trim()).filter(Boolean);
+  }
+  if (typeof node.whatThisNodeDoes === 'string' && node.whatThisNodeDoes.trim()) {
+    return node.whatThisNodeDoes.split('\n').map(s => s.trim()).filter(Boolean);
+  }
+  if (Array.isArray(node.steps) && node.steps.length) {
+    return node.steps.map(s => String(s || '').trim()).filter(Boolean);
+  }
+  if (Array.isArray(node.bullets) && node.bullets.length) {
+    return node.bullets.map(s => String(s || '').trim()).filter(Boolean);
+  }
+  if (Array.isArray(node.substeps) && node.substeps.length) {
+    return node.substeps.map(s => String(s || '').trim()).filter(Boolean);
+  }
+  return [];
+}
+window.extractWhatThisNodeDoesLines = extractWhatThisNodeDoesLines;
+
+function formatGaugeDisplay(node) {
+  if (!node || typeof node !== 'object') return 'IDLE · Runs: 0';
+  if (typeof S !== 'undefined' && S && typeof evaluateGaugeHealthV190 === 'function') {
+    const h = evaluateGaugeHealthV190(node, S);
+    if (h && h.halted) return '⏸ Halted: Upstream Red Wire';
+  }
+  const mode = node.gaugeMode || 'run_counter';
+  const cnt = Number(node.gaugeCount) || 0;
+  const status = String(node.gaugeStatus || 'IDLE');
+  const logs = Array.isArray(node.gaugeLogs) ? node.gaugeLogs : [];
+  const series = Array.isArray(node.gaugeSeries) && node.gaugeSeries.length ? node.gaugeSeries : null;
+  if (node.tapVariable && series) {
+    const latest = Number(series[series.length - 1]);
+    const unit = node.gaugeUnit || '';
+    return `${node.tapVariable}: ${Number.isFinite(latest) ? latest : 0}${unit ? ' ' + unit : ''} · ${status}`;
+  }
+  if (mode === 'pass_fail') {
+    const icon = status === 'FAIL' ? '❌' : (status === 'PASS' ? '✅' : '⚪');
+    return `${icon} ${status} · Runs: ${cnt}`;
+  }
+  if (mode === 'event_log') {
+    const last = logs.length ? logs[logs.length - 1] : 'Waiting for signal';
+    return `Logs: ${logs.length} · ${String(last).slice(0, 44)}`;
+  }
+  if (mode === 'custom_script') {
+    const sb = node.scriptBinding || 'STUB_metric_parser.py';
+    return `🐍 ${sb} · Runs: ${cnt}`;
+  }
+  return `Runs: ${cnt} · ${status}`;
+}
+window.formatGaugeDisplay = formatGaugeDisplay;
+
+function sanitizeValueForExport(val) {
+  if (Array.isArray(val)) return val.map(sanitizeValueForExport);
+  if (!val || typeof val !== 'object') return val;
+  const out = {};
+  const secretKeyRe = /^(?:llmApiKey|apiKey|api_key|authToken|accessToken|secretKey|password)$/i;
+  Object.keys(val).forEach(k => {
+    if (secretKeyRe.test(k)) return;
+    if (k === 'originalBaselineSnapshot') return;
+    out[k] = sanitizeValueForExport(val[k]);
+  });
+  return out;
+}
+
+function sanitizeWorkflowStateForExport(stateObj) {
+  if (!stateObj || typeof stateObj !== 'object') return stateObj;
+  const clean = sanitizeValueForExport(JSON.parse(JSON.stringify(stateObj)));
+  delete clean.originalBaselineSnapshot;
+  if (Array.isArray(clean.nodes)) {
+    clean.nodes.forEach(n => {
+      if (!n || typeof n !== 'object') return;
+      delete n.llmApiKey;
+      delete n.apiKey;
+      if (n.llmConfig && typeof n.llmConfig === 'object') {
+        delete n.llmConfig.apiKey;
+        delete n.llmConfig.llmApiKey;
+      }
+    });
+  }
+  return clean;
+}
+window.sanitizeWorkflowStateForExport = sanitizeWorkflowStateForExport;
+
+function normalizeLoadedState(stateObj) {
+  if (!stateObj || typeof stateObj !== 'object') return createBlankWorkflowState();
+  const st = stateObj;
+  if (!Array.isArray(st.categories)) st.categories = [];
+  if (!Array.isArray(st.subcategories)) st.subcategories = [];
+  if (!Array.isArray(st.cells)) st.cells = [];
+  if (!Array.isArray(st.nodes)) st.nodes = [];
+  if (!Array.isArray(st.fileContainers)) st.fileContainers = [];
+  if (!Array.isArray(st.buses)) st.buses = [];
+  if (!Array.isArray(st.stickyNotes)) st.stickyNotes = [];
+  if (!Array.isArray(st.wires)) st.wires = [];
+  if (!Array.isArray(st.customNodeTemplates)) st.customNodeTemplates = loadStoredCustomTemplates();
+  st.buckets = st.fileContainers;
+
+  const normContainerList = (arr, defIn, defOut, defNote) => {
+    arr.forEach(c => {
+      if (!c || typeof c !== 'object') return;
+      if (!Array.isArray(c.inPorts)) c.inPorts = [defIn];
+      if (!Array.isArray(c.outPorts)) c.outPorts = [defOut];
+      if (!Array.isArray(c.bottomPorts)) c.bottomPorts = [];
+      if (!c.notes) c.notes = c.checklist ? c.checklist.slice() : [defNote];
+      if (typeof c.collapsed !== 'boolean') c.collapsed = false;
+      if (!c.collapsedSections || typeof c.collapsedSections !== 'object') c.collapsedSections = {};
+    });
+  };
+  normContainerList(st.categories, 'stage_in', 'stage_out', 'Stage notes & subsystem I/O');
+  normContainerList(st.subcategories, 'group_in', 'group_out', 'Worker group notes');
+  normContainerList(st.cells, 'cell_in', 'cell_out', '[x] Input schema verified');
+
+  st.nodes.forEach(n => {
+    if (!n || typeof n !== 'object') return;
+    if (!n.collapsedSections || typeof n.collapsedSections !== 'object') n.collapsedSections = {};
+    const stepLines = extractWhatThisNodeDoesLines(n);
+    n.steps = stepLines.slice();
+    n.substeps = stepLines.slice();
+    n.whatThisNodeDoes = stepLines.slice();
+    delete n.llmApiKey;
+    delete n.apiKey;
+    if (n.llmConfig && typeof n.llmConfig === 'object') {
+      delete n.llmConfig.apiKey;
+      delete n.llmConfig.llmApiKey;
+    }
+    if (n.type === 'gauge') {
+      if (!Array.isArray(n.inPorts) || n.inPorts.length === 0) n.inPorts = ['tap_in'];
+      n.inputs = n.inPorts;
+      n.outPorts = [];
+      n.outputs = [];
+      if (!n.gaugeMode) n.gaugeMode = 'run_counter';
+      if (typeof n.gaugeCount !== 'number' || !Number.isFinite(n.gaugeCount)) {
+        n.gaugeCount = Number(n.gaugeCount) || 0;
+      }
+      if (!n.gaugeStatus) n.gaugeStatus = 'IDLE';
+      if (!Array.isArray(n.gaugeLogs)) n.gaugeLogs = [];
+      if (n.gaugeMode === 'custom_script' && !String(n.scriptBinding || '').trim()) {
+        n.scriptBinding = 'STUB_metric_parser.py';
+      }
+      n.gaugeDisplay = formatGaugeDisplay(n);
+    }
+  });
+
+  st.fileContainers.forEach(fc => {
+    if (!fc || typeof fc !== 'object') return;
+    if (!fc.collapsedSections || typeof fc.collapsedSections !== 'object') fc.collapsedSections = {};
+    const pat = fc.pattern || fc.filter || '*.*';
+    fc.pattern = pat;
+    fc.filter = pat;
+    if (!Array.isArray(fc.inPorts)) fc.inPorts = ['files_in'];
+    if (!Array.isArray(fc.outPorts)) fc.outPorts = ['files_out'];
+    if (!Array.isArray(fc.files)) fc.files = [];
+  });
+
+  st.buses.forEach(b => {
+    if (!b || typeof b !== 'object') return;
+    if (!b.orientation) b.orientation = 'left-right';
+    if (!Array.isArray(b.inPorts)) b.inPorts = ['in_1', 'in_2', 'in_3'];
+    if (!Array.isArray(b.outPorts)) b.outPorts = ['out_1', 'out_2', 'out_3'];
+    if (!Array.isArray(b.bottomPorts)) b.bottomPorts = [];
+    if (b.hubMode !== 'combiner' && b.hubMode !== 'passthrough') b.hubMode = 'passthrough';
+    if (b.hubMode === 'combiner' && !String(b.combinerScript || '').trim()) {
+      b.combinerScript = 'STUB_concatenator.py';
+    }
+    if (typeof b.combinerScript !== 'string') {
+      b.combinerScript = b.hubMode === 'combiner' ? 'STUB_concatenator.py' : '';
+    }
+  });
+
+  return st;
+}
+window.normalizeLoadedState = normalizeLoadedState;
+
 function ensureStateDefaults() {
-  if (!S.categories) S.categories = [];
-  if (!S.subcategories) S.subcategories = [];
-  if (!S.cells) S.cells = [];
-  if (!S.nodes) S.nodes = [];
-  if (!S.fileContainers) S.fileContainers = [];
-  if (!S.buses) S.buses = [];
-  if (!Array.isArray(S.stickyNotes)) S.stickyNotes = [];
-  if (!S.wires) S.wires = [];
-  if (!Array.isArray(S.customNodeTemplates)) S.customNodeTemplates = loadStoredCustomTemplates();
+  if (!S || typeof S !== 'object') S = createBlankWorkflowState();
   if (!S.wireStyle) S.wireStyle = 'schematic';
+  if (!WIRE_DETAIL_MODES_V190.includes(S.wireDetailMode)) S.wireDetailMode = 'clean_errors';
   if (typeof S.wireSelectMode !== 'boolean') S.wireSelectMode = false;
   if (typeof S.wireDeleteMode !== 'boolean') S.wireDeleteMode = false;
   if (!S.activeBrushColor || !normalizeHexColor(S.activeBrushColor)) S.activeBrushColor = '#38bdf8';
@@ -422,7 +2489,6 @@ function ensureStateDefaults() {
   if (!S.workflowKey) S.workflowKey = S.workflowId;
   if (!S.title && S.workflowName) S.title = S.workflowName;
   if (!S.workflowName && S.title) S.workflowName = S.title;
-  if (!Array.isArray(S.buckets)) S.buckets = Array.isArray(S.fileContainers) ? S.fileContainers : [];
   if (S.workflowStatus !== 'active' && S.workflowStatus !== 'construction' && S.workflowStatus !== 'sandbox') {
     S.workflowStatus = S.workflowId === 'blank' ? 'sandbox' : (S.workflowId === 'hello_world' ? 'construction' : 'active');
   }
@@ -435,48 +2501,7 @@ function ensureStateDefaults() {
   if (typeof S.hideLeftPalette !== 'boolean') {
     S.hideLeftPalette = false;
   }
-  S.categories.forEach(c => {
-    if (!c.inPorts) c.inPorts = ['stage_in'];
-    if (!c.outPorts) c.outPorts = ['stage_out'];
-    if (!c.bottomPorts) c.bottomPorts = ['sub_bus'];
-    if (!c.notes) c.notes = c.checklist ? c.checklist.slice() : ['Stage notes & subsystem I/O'];
-    if (typeof c.collapsed !== 'boolean') c.collapsed = false;
-    if (!c.collapsedSections || typeof c.collapsedSections !== 'object') c.collapsedSections = {};
-  });
-  S.subcategories.forEach(sc => {
-    if (!sc.inPorts) sc.inPorts = ['group_in'];
-    if (!sc.outPorts) sc.outPorts = ['group_out'];
-    if (!sc.bottomPorts) sc.bottomPorts = ['telemetry_out'];
-    if (!sc.notes) sc.notes = sc.checklist ? sc.checklist.slice() : ['Worker group notes'];
-    if (typeof sc.collapsed !== 'boolean') sc.collapsed = false;
-    if (!sc.collapsedSections || typeof sc.collapsedSections !== 'object') sc.collapsedSections = {};
-  });
-  S.cells.forEach(cell => {
-    if (!cell.inPorts) cell.inPorts = ['cell_in'];
-    if (!cell.outPorts) cell.outPorts = ['cell_out'];
-    if (!cell.bottomPorts) cell.bottomPorts = ['gate_out'];
-    if (!cell.notes) cell.notes = cell.checklist ? cell.checklist.slice() : ['[x] Input schema verified', '[ ] Output artifacts validated'];
-    if (typeof cell.collapsed !== 'boolean') cell.collapsed = false;
-    if (!cell.collapsedSections || typeof cell.collapsedSections !== 'object') cell.collapsedSections = {};
-  });
-  S.nodes.forEach(n => {
-    if (!n.collapsedSections || typeof n.collapsedSections !== 'object') n.collapsedSections = {};
-  });
-  S.fileContainers.forEach(fc => {
-    if (!fc.collapsedSections || typeof fc.collapsedSections !== 'object') fc.collapsedSections = {};
-    const pat = fc.pattern || fc.filter || '*.*';
-    fc.pattern = pat;
-    fc.filter = pat;
-    if (!fc.inPorts) fc.inPorts = ['files_in'];
-    if (!fc.outPorts) fc.outPorts = ['files_out'];
-    if (!Array.isArray(fc.files)) fc.files = [];
-  });
-  S.buses.forEach(b => {
-    if (!b.orientation) b.orientation = 'left-right';
-    if (!b.inPorts) b.inPorts = ['in_1', 'in_2', 'in_3'];
-    if (!b.outPorts) b.outPorts = ['out_1', 'out_2', 'out_3'];
-    if (!b.bottomPorts) b.bottomPorts = ['bus_tap'];
-  });
+  normalizeLoadedState(S);
   S.stickyNotes.forEach(sn => {
     if (!sn.id) sn.id = uid('sticky');
     if (!sn.title) sn.title = '📝 Sticky Note';
@@ -602,6 +2627,7 @@ function isPresetAllowedInStandalone(presetKey) {
     ? window.__STANDALONE_ALLOWED_PRESETS__
     : null;
   if (!allowed || typeof allowed !== 'object') return true;
+  if ((presetKey === 'v190_telemetry_pipeline' || presetKey === 'v191_telemetry_pipeline') && allowed[presetKey] === undefined) return true;
   return Boolean(allowed[presetKey]);
 }
 
@@ -716,8 +2742,14 @@ function collectCanvasSearchMatches(rawQuery) {
       item.outputSpec,
       ...(Array.isArray(item.notes) ? item.notes : []),
       ...(Array.isArray(item.rules) ? item.rules : []),
+      item.hubMode,
+      item.combinerScript,
+      item.gaugeDisplay,
+      item.gaugeStatus,
+      ...(Array.isArray(item.whatThisNodeDoes) ? item.whatThisNodeDoes : []),
       ...(Array.isArray(item.steps) ? item.steps : []),
       ...(Array.isArray(item.substeps) ? item.substeps : []),
+      ...(Array.isArray(item.gaugeLogs) ? item.gaugeLogs : []),
       ...(Array.isArray(item.files) ? item.files.map(f => (typeof f === 'object' && f ? (f.name || f.label || f.path || '') : String(f || ''))) : []),
       ...(Array.isArray(item.todos) ? item.todos.map(t => (t && t.text) || '') : [])
     ];
@@ -859,7 +2891,7 @@ function syncWorkflowStatusUI() {
   const isSandbox = S.workflowStatus === 'sandbox';
   const isEditable = isConstruction || isSandbox;
   const modeBadgeEl = document.getElementById('modeBadge');
-  if (modeBadgeEl) modeBadgeEl.textContent = 'v1.8.1';
+  if (modeBadgeEl) modeBadgeEl.textContent = 'v1.9.1';
   if (viewport && viewport.classList && viewport.classList.toggle) {
     viewport.classList.toggle('workflow-construction', isConstruction);
     viewport.classList.toggle('workflow-active', !isEditable);
@@ -999,8 +3031,10 @@ function cloneCurrentWorkflow() {
 }
 
 let activeWorkflowFileHandle = null;
-const BUILTIN_PRESET_KEYS = new Set(['example', 'hello_world', 'algorithm']);
+const BUILTIN_PRESET_KEYS = new Set(['v191_telemetry_pipeline', 'v190_telemetry_pipeline', 'example', 'hello_world', 'algorithm']);
 const BUILTIN_PRESET_TITLES = {
+  v191_telemetry_pipeline: '🚀 v1.9.1 Deep Module Pipeline (Black-Box Containers & Interactive Hub Strands)',
+  v190_telemetry_pipeline: '🚀 v1.9.0 Real Wired Pipeline (Telemetry, Contracts, Hubs & Gauges)',
   example: '🧪 Example Workflow (Order & Packaging Pipeline)',
   hello_world: '👋 Hello World (Minimal 2-Node Starter)',
   algorithm: '⚙️ Algorithm Pipeline (Sample Processing & Validation)',
@@ -1481,17 +3515,17 @@ function setStatus(msg) {
   document.getElementById('statusBanner').textContent = msg;
 }
 
-function spawnCategoryContainer(x = 60, y = 50) {
+function spawnCategoryContainer(x = 60, y = 50, custom = {}) {
   enterConstructionMode('add category', false);
   const item = {
-    id: uid('cat'),
-    title: `Category ${S.categories.length + 1} — Pipeline Stage`,
-    inPorts: ['stage_in'],
-    outPorts: ['stage_out'],
-    bottomPorts: ['sub_bus'],
-    notes: ['Stage notes & subsystem I/O'],
-    collapsed: false,
-    x, y, w: 540, h: 360
+    id: custom.id || uid('cat'),
+    title: custom.title || `Category ${S.categories.length + 1} — Pipeline Stage`,
+    inPorts: Array.isArray(custom.inPorts) ? custom.inPorts.slice() : ['stage_in'],
+    outPorts: Array.isArray(custom.outPorts) ? custom.outPorts.slice() : ['stage_out'],
+    bottomPorts: Array.isArray(custom.bottomPorts) ? custom.bottomPorts.slice() : [],
+    notes: Array.isArray(custom.notes) ? custom.notes.slice() : ['Stage notes & subsystem I/O'],
+    collapsed: Boolean(custom.collapsed),
+    x, y, w: custom.w || 540, h: custom.h || 360
   };
   S.categories.push(item);
   selectedItem = { kind: 'category', id: item.id };
@@ -1499,17 +3533,17 @@ function spawnCategoryContainer(x = 60, y = 50) {
   return item;
 }
 
-function spawnSubcategoryContainer(x = 90, y = 100) {
+function spawnSubcategoryContainer(x = 90, y = 100, custom = {}) {
   enterConstructionMode('add subcategory', false);
   const item = {
-    id: uid('subcat'),
-    title: `Subcategory ${S.subcategories.length + 1} — Worker Group`,
-    inPorts: ['group_in'],
-    outPorts: ['group_out'],
-    bottomPorts: ['telemetry_out'],
-    notes: ['Worker group notes'],
-    collapsed: false,
-    x, y, w: 320, h: 220
+    id: custom.id || uid('subcat'),
+    title: custom.title || `Subcategory ${S.subcategories.length + 1} — Worker Group`,
+    inPorts: Array.isArray(custom.inPorts) ? custom.inPorts.slice() : ['group_in'],
+    outPorts: Array.isArray(custom.outPorts) ? custom.outPorts.slice() : ['group_out'],
+    bottomPorts: Array.isArray(custom.bottomPorts) ? custom.bottomPorts.slice() : [],
+    notes: Array.isArray(custom.notes) ? custom.notes.slice() : ['Worker group notes'],
+    collapsed: Boolean(custom.collapsed),
+    x, y, w: custom.w || 320, h: custom.h || 220
   };
   S.subcategories.push(item);
   selectedItem = { kind: 'subcategory', id: item.id };
@@ -1517,18 +3551,18 @@ function spawnSubcategoryContainer(x = 90, y = 100) {
   return item;
 }
 
-function spawnCellSlot(x = 120, y = 140) {
+function spawnCellSlot(x = 120, y = 140, custom = {}) {
   enterConstructionMode('add cell', false);
   const item = {
-    id: uid('cell'),
-    title: `Cell ${S.cells.length + 1} · Quality Gate`,
-    status: 'ready',
-    inPorts: ['cell_in'],
-    outPorts: ['cell_out'],
-    bottomPorts: ['gate_out'],
-    notes: ['[x] Input schema verified', '[ ] Output artifacts validated'],
-    collapsed: false,
-    x, y, w: 220, h: 130
+    id: custom.id || uid('cell'),
+    title: custom.title || `Cell ${S.cells.length + 1} · Quality Gate`,
+    status: custom.status || 'ready',
+    inPorts: Array.isArray(custom.inPorts) ? custom.inPorts.slice() : ['cell_in'],
+    outPorts: Array.isArray(custom.outPorts) ? custom.outPorts.slice() : ['cell_out'],
+    bottomPorts: Array.isArray(custom.bottomPorts) ? custom.bottomPorts.slice() : [],
+    notes: Array.isArray(custom.notes) ? custom.notes.slice() : ['[x] Input schema verified', '[ ] Output artifacts validated'],
+    collapsed: Boolean(custom.collapsed),
+    x, y, w: custom.w || 220, h: custom.h || 130
   };
   S.cells.push(item);
   selectedItem = { kind: 'cell', id: item.id };
@@ -1547,14 +3581,11 @@ function spawnAlgorithmNode(x = 180, y = 150, custom = {}) {
     ? custom.outPorts.slice()
     : (Array.isArray(custom.outputs) ? custom.outputs.slice() : null);
   const outPorts = customOut !== null ? customOut : ['output_files', 'metrics'];
-  const stepsList = Array.isArray(custom.steps) && custom.steps.length
-    ? custom.steps
-    : (Array.isArray(custom.bullets) && custom.bullets.length
-      ? custom.bullets
-      : (Array.isArray(custom.substeps) ? custom.substeps : []));
+  const stepsList = extractWhatThisNodeDoesLines(custom);
   const defaultCategory = nodeType === 'external_in'
     ? '📥 EXTERNAL WORKFLOW IN'
-    : (nodeType === 'external_out' ? '📤 EXTERNAL WORKFLOW OUT' : 'Processor');
+    : (nodeType === 'external_out' ? '📤 EXTERNAL WORKFLOW OUT' : (nodeType === 'gauge' ? '📊 GAUGE / LOGGER' : 'Processor'));
+  const effOutPorts = nodeType === 'gauge' ? [] : outPorts;
   const item = {
     id: custom.id || uid('node'),
     type: nodeType,
@@ -1562,18 +3593,19 @@ function spawnAlgorithmNode(x = 180, y = 150, custom = {}) {
     category: custom.category || defaultCategory,
     inPorts: inPorts,
     inputs: inPorts,
-    outPorts: outPorts,
-    outputs: outPorts,
+    outPorts: effOutPorts,
+    outputs: effOutPorts,
     inputSpec: custom.inputSpec !== undefined ? custom.inputSpec : '',
     outputSpec: custom.outputSpec !== undefined ? custom.outputSpec : '',
-    steps: stepsList,
-    substeps: stepsList,
+    steps: stepsList.slice(),
+    substeps: stepsList.slice(),
+    whatThisNodeDoes: stepsList.slice(),
     ui_url: (custom.ui_url !== undefined ? custom.ui_url : custom.uiUrl) || '',
     ui_label: (custom.ui_label !== undefined ? custom.ui_label : custom.uiLabel) || '',
     params: custom.params !== undefined ? custom.params : { batch_size: 4, mode: 'strict_schema', threshold: 0.75 },
     notes: custom.notes !== undefined ? custom.notes : ['Node processing notes'],
     rules: custom.rules || custom.notes || [],
-    scriptBinding: custom.scriptBinding !== undefined ? custom.scriptBinding : 'modules/process_step.py',
+    scriptBinding: custom.scriptBinding !== undefined ? custom.scriptBinding : 'STUB_process_step.py',
     x, y,
     w: custom.w || 295
   };
@@ -1616,14 +3648,414 @@ function spawnIdeaNode(x = 110, y = 130, custom = {}) {
 window.spawnIdeaNode = spawnIdeaNode;
 window.spawnEmptyNode = spawnIdeaNode;
 
+
+const LLM_PROVIDER_OPTIONS = [
+  { id: 'repo_agent', label: '🤖 Repo / Coding Agent (Task Brief / Local Bridge)' },
+  { id: 'ollama', label: '🦙 Local Ollama (Offline Default)' },
+  { id: 'dotenv_runner', label: '🔒 Local .env Script Runner (Zero Browser Key)' },
+  { id: 'gemini', label: '✨ Gemini API (Browser LocalKey)' },
+  { id: 'openai', label: '🤖 OpenAI API (Browser LocalKey)' },
+  { id: 'custom', label: '🔌 Custom Endpoint' }
+];
+
+function getActiveRepoAgentBridge() {
+  if (typeof window === 'undefined') return null;
+  const br = window.__REPO_AGENT_BRIDGE__;
+  if (!br || typeof br.dispatchTask !== 'function') return null;
+  if (typeof br.isConnected === 'function' && !br.isConnected()) return null;
+  return br;
+}
+
+function getLlmProviderMeta(provider, node) {
+  const p = String(provider || 'ollama').toLowerCase();
+  const bridge = getActiveRepoAgentBridge();
+  if (p === 'repo_agent') {
+    return {
+      id: 'repo_agent',
+      label: '🤖 Repo / Coding Agent (Task Brief / Local Bridge)',
+      destination: bridge ? (bridge.label || 'Local Repo Agent Bridge') : 'Copy-Ready Repo Agent Task Brief (Local Only)',
+      usesBrowserKey: false,
+      securityNote: bridge
+        ? 'Uses live Local Bridge; zero browser API keys and raw file bytes stay local.'
+        : 'Generates a copy-ready Task Brief locally; zero API keys and zero network upload.'
+    };
+  }
+  if (p === 'dotenv_runner') {
+    const scriptName = (node && node.scriptBinding) || 'STUB_llm_query_runner.py';
+    return {
+      id: 'dotenv_runner',
+      label: '🔒 Local .env Script Runner (Zero Browser Key)',
+      destination: `${scriptName} (reads local .env on disk)`,
+      usesBrowserKey: false,
+      securityNote: 'Credentials stay in local .env outside the browser; raw file bytes stay local.'
+    };
+  }
+  if (p === 'gemini') {
+    return {
+      id: 'gemini',
+      label: '✨ Gemini API (Browser LocalKey)',
+      destination: 'Gemini API Endpoint (HTTPS)',
+      usesBrowserKey: true,
+      securityNote: 'Browser key lives strictly in localStorage and is scrubbed on JSON/HTML export.'
+    };
+  }
+  if (p === 'openai') {
+    return {
+      id: 'openai',
+      label: '🤖 OpenAI API (Browser LocalKey)',
+      destination: 'OpenAI API Endpoint (HTTPS)',
+      usesBrowserKey: true,
+      securityNote: 'Browser key lives strictly in localStorage and is scrubbed on JSON/HTML export.'
+    };
+  }
+  if (p === 'custom') {
+    const ep = (node && node.llmConfig && node.llmConfig.endpoint) || 'Custom HTTP(S) Endpoint';
+    return {
+      id: 'custom',
+      label: '🔌 Custom Endpoint',
+      destination: ep,
+      usesBrowserKey: true,
+      securityNote: 'Optional browser key lives strictly in localStorage and is scrubbed on export.'
+    };
+  }
+  return {
+    id: 'ollama',
+    label: '🦙 Local Ollama (Offline Default)',
+    destination: OLLAMA_LOCAL_BASE_URL + OLLAMA_GENERATE_PATH,
+    usesBrowserKey: false,
+    securityNote: '100% local loopback; raw file bytes stay local and zero browser keys are needed.'
+  };
+}
+window.getLlmProviderMeta = getLlmProviderMeta;
+
+function renderLlmProviderOptionsHtml(selectedProvider) {
+  const cur = String(selectedProvider || 'ollama');
+  return LLM_PROVIDER_OPTIONS.map(opt =>
+    `<option value="${opt.id}" ${cur === opt.id ? 'selected' : ''}>${opt.label}</option>`
+  ).join('');
+}
+
+function renderLlmSecurityStripHtml(node, wiredInFiles) {
+  const prov = (node && (node.llmProvider || (node.llmConfig && node.llmConfig.provider))) || 'ollama';
+  const meta = getLlmProviderMeta(prov, node);
+  const promptStr = String((node && (node.llmPrompt || (node.llmConfig && node.llmConfig.prompt))) || '');
+  const filesList = Array.isArray(wiredInFiles) ? wiredInFiles : [];
+  const filesTxt = filesList.length ? filesList.join(', ') : '(none wired)';
+  return `
+    <div class="llm-security-strip">
+      <div><strong>🛡️ What Gets Sent &amp; Security</strong></div>
+      <div><strong>Destination:</strong> <code>${escSvgXml(meta.destination)}</code></div>
+      <div><strong>Payload:</strong> ${promptStr.length} chars prompt + <code>files_in</code> [${escSvgXml(filesTxt)}] (raw file bytes stay local)</div>
+      <div><strong>Keys:</strong> ${escSvgXml(meta.securityNote)} Browser keys live strictly in <code>localStorage</code> and are scrubbed on export.</div>
+    </div>
+  `;
+}
+
+function spawnGaugeNode(x = 320, y = 220, custom = {}) {
+  const mode = custom.gaugeMode || 'run_counter';
+  const inPorts = Array.isArray(custom.inPorts)
+    ? custom.inPorts.slice()
+    : (Array.isArray(custom.inputs) ? custom.inputs.slice() : ['tap_in']);
+  const scriptVal = custom.scriptBinding !== undefined
+    ? custom.scriptBinding
+    : (mode === 'custom_script' ? 'STUB_metric_parser.py' : '');
+  const notesList = extractWhatThisNodeDoesLines(custom);
+  const defaultNotes = notesList.length
+    ? notesList
+    : ['Input-only measurement & log sink (records runs, pass/fail signals, or metric events).'];
+  const nodeItem = spawnAlgorithmNode(x, y, Object.assign({
+    id: custom.id || uid('gauge'),
+    type: 'gauge',
+    title: custom.title || `📊 Gauge / Logger ${S.nodes.length + 1}`,
+    category: custom.category || '📊 GAUGE / LOGGER',
+    inPorts: inPorts.length ? inPorts : ['tap_in'],
+    outPorts: [],
+    outputs: [],
+    inputSpec: custom.inputSpec || 'tap_in (measurement tap, counter signal, or log payload)',
+    outputSpec: '',
+    steps: defaultNotes,
+    substeps: defaultNotes,
+    whatThisNodeDoes: defaultNotes,
+    params: custom.params || { sink_mode: mode },
+    notes: custom.notes || ['Gauge / Logger Sink Node'],
+    scriptBinding: scriptVal,
+    w: custom.w || 285
+  }, custom, { type: 'gauge', outPorts: [], outputs: [] }));
+  nodeItem.outPorts = [];
+  nodeItem.outputs = [];
+  nodeItem.gaugeMode = mode;
+  nodeItem.gaugeCount = Number.isFinite(Number(custom.gaugeCount)) ? Number(custom.gaugeCount) : 0;
+  nodeItem.gaugeStatus = custom.gaugeStatus || 'IDLE';
+  nodeItem.gaugeLogs = Array.isArray(custom.gaugeLogs) ? custom.gaugeLogs.slice() : [];
+  nodeItem.gaugeDisplay = custom.gaugeDisplay || formatGaugeDisplay(nodeItem);
+  autoSaveWorkflowState('spawn_gauge_node');
+  renderAll();
+  return nodeItem;
+}
+window.spawnGaugeNode = spawnGaugeNode;
+
+function recordGaugeObservation(nodeOrId, eventLabel = 'signal', statusHint = 'PASS') {
+  const g = typeof nodeOrId === 'string'
+    ? (S.nodes || []).find(n => n.id === nodeOrId)
+    : nodeOrId;
+  if (!g || g.type !== 'gauge') return null;
+  const health = evaluateGaugeHealthV190(g, S);
+  if (health.halted) {
+    g.gaugeStatus = 'HALTED';
+    g.gaugeDisplay = '⏸ Halted: Upstream Red Wire';
+    return Object.assign(g, { halted: true, haltReason: health.reason });
+  }
+  if (!Array.isArray(g.gaugeLogs)) g.gaugeLogs = [];
+  g.gaugeCount = (Number(g.gaugeCount) || 0) + 1;
+  if (g.tapVariable || g.gaugeStyle) {
+    if (!Array.isArray(g.gaugeSeries)) g.gaugeSeries = [];
+    const prevVal = g.gaugeSeries.length ? Number(g.gaugeSeries[g.gaugeSeries.length - 1]) : 0;
+    let nextVal = g.gaugeCount;
+    if (g.tapVariable === 'pass_rate') {
+      const base = 91.5 + Math.sin(g.gaugeCount * 0.75) * 6.2;
+      nextVal = /FAIL|ERR/.test(String(statusHint || '').toUpperCase()) ? 68.0 : Math.max(70.0, Math.min(99.6, Math.round(base * 10) / 10));
+    } else if (g.tapVariable === 'records_scored') {
+      nextVal = Math.round((Number.isFinite(prevVal) ? prevVal : 0) + 110 + ((g.gaugeCount * 19) % 45));
+    } else if (g.tapVariable === 'elapsed_ms') {
+      nextVal = Math.max(12.0, Math.min(82.0, Math.round((31.0 + Math.sin(g.gaugeCount * 1.1) * 9.5) * 10) / 10));
+    }
+    g.gaugeSeries.push(nextVal);
+    if (g.gaugeSeries.length > 20) g.gaugeSeries = g.gaugeSeries.slice(g.gaugeSeries.length - 20);
+  }
+  const mode = g.gaugeMode || 'run_counter';
+  const normalizedHint = String(statusHint || 'PASS').toUpperCase();
+  if (mode === 'pass_fail') {
+    g.gaugeStatus = /FAIL|ERR/.test(normalizedHint) ? 'FAIL' : 'PASS';
+  } else {
+    g.gaugeStatus = /FAIL|ERR/.test(normalizedHint) ? 'WARN' : 'ACTIVE';
+  }
+  const ts = typeof formatAutoSaveTime === 'function' ? formatAutoSaveTime() : '00:00:00';
+  g.gaugeLogs.push(`[${ts}] ${eventLabel} (${g.gaugeStatus})`);
+  if (g.gaugeLogs.length > 25) {
+    g.gaugeLogs = g.gaugeLogs.slice(g.gaugeLogs.length - 25);
+  }
+  g.gaugeDisplay = formatGaugeDisplay(g);
+  return g;
+}
+window.recordGaugeObservation = recordGaugeObservation;
+
+function propagateSignalToDownstreamGauges(sourceId, eventLabel, statusHint = 'PASS') {
+  if (!S || !Array.isArray(S.wires)) return [];
+  const updatedIds = [];
+  const srcNode = (S.nodes || []).find(n => n.id === sourceId);
+  if (srcNode && srcNode.type === 'gauge') {
+    recordGaugeObservation(srcNode, eventLabel || srcNode.title || 'manual tick', statusHint);
+    updatedIds.push(srcNode.id);
+    return updatedIds;
+  }
+  const visited = new Set([sourceId]);
+  const queue = [sourceId];
+  while (queue.length > 0) {
+    const cur = queue.shift();
+    S.wires.forEach(w => {
+      if (!w || w.fromNode !== cur || w.wireKind === 'semantic' || visited.has(w.toNode)) return;
+      visited.add(w.toNode);
+      const destNode = (S.nodes || []).find(n => n.id === w.toNode);
+      if (destNode && destNode.type === 'gauge') {
+        recordGaugeObservation(destNode, `${eventLabel} -> ${w.toPort || 'tap_in'}`, statusHint);
+        updatedIds.push(destNode.id);
+      } else if ((S.buses || []).some(b => b.id === w.toNode) || (S.nodes || []).some(n => n.id === w.toNode) || (typeof isContainerItem === 'function' && isContainerItem({ id: w.toNode }))) {
+        queue.push(w.toNode);
+      }
+    });
+  }
+  return updatedIds;
+}
+
+function updateGaugeMode(nodeId, mode) {
+  const node = (S.nodes || []).find(n => n.id === nodeId) || findSelectedObject();
+  if (!node) return null;
+  enterConstructionMode('edit gauge mode', false);
+  const validModes = ['run_counter', 'pass_fail', 'event_log', 'custom_script'];
+  node.gaugeMode = validModes.includes(mode) ? mode : 'run_counter';
+  if (node.gaugeMode === 'custom_script' && (!node.scriptBinding || node.scriptBinding === 'STUB_process_step.py')) {
+    node.scriptBinding = 'STUB_metric_parser.py';
+  }
+  node.gaugeDisplay = formatGaugeDisplay(node);
+  autoSaveWorkflowState('gauge_mode');
+  renderAll({ preserveInspector: false });
+  return node;
+}
+window.updateGaugeMode = updateGaugeMode;
+
+function updateGaugeField(nodeId, field, val) {
+  const node = (S.nodes || []).find(n => n.id === nodeId) || findSelectedObject();
+  if (!node) return null;
+  enterConstructionMode('edit gauge field', false);
+  node[field] = val;
+  node.gaugeDisplay = formatGaugeDisplay(node);
+  autoSaveWorkflowState('gauge_field');
+  renderAll({ preserveInspector: true });
+  return node;
+}
+window.updateGaugeField = updateGaugeField;
+
+function triggerGaugeSampleTick(nodeId, ev = null, statusHint = 'PASS') {
+  if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
+  const node = (S.nodes || []).find(n => n.id === nodeId) || findSelectedObject();
+  if (!node) return null;
+  const health = evaluateGaugeHealthV190(node, S);
+  if (health.halted) {
+    node.gaugeStatus = 'HALTED';
+    node.gaugeDisplay = '⏸ Halted: Upstream Red Wire';
+    renderAll({ preserveInspector: true });
+    setStatus(health.reason);
+    return Object.assign({ halted: true, reason: health.reason }, node);
+  }
+  recordGaugeObservation(node, `${node.title || node.id} sample`, statusHint);
+  autoSaveWorkflowState('gauge_tick');
+  renderAll({ preserveInspector: false });
+  setStatus(`📊 Gauge "${node.title}" updated: ${node.gaugeDisplay}`);
+  return node;
+}
+window.triggerGaugeSampleTick = triggerGaugeSampleTick;
+
+function resetGaugeNode(nodeId, ev = null) {
+  if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
+  const node = (S.nodes || []).find(n => n.id === nodeId) || findSelectedObject();
+  if (!node) return null;
+  node.gaugeCount = 0;
+  node.gaugeStatus = 'IDLE';
+  node.gaugeLogs = [];
+  node.gaugeDisplay = formatGaugeDisplay(node);
+  autoSaveWorkflowState('gauge_reset');
+  renderAll({ preserveInspector: false });
+  setStatus(`↺ Reset Gauge "${node.title}"`);
+  return node;
+}
+window.resetGaugeNode = resetGaugeNode;
+
+function addContainerMeasurementTap(itemId) {
+  const obj = findAnyItemById(itemId) || findSelectedObject();
+  if (!obj) return null;
+  enterConstructionMode('add measurement tap', false);
+  if (!Array.isArray(obj.bottomPorts)) obj.bottomPorts = [];
+  let cand = 'metrics_tap';
+  let idx = 2;
+  while (obj.bottomPorts.includes(cand)) {
+    cand = `metrics_tap_${idx}`;
+    idx += 1;
+  }
+  obj.bottomPorts.push(cand);
+  resetAutoFitOnItemAndParents(obj);
+  autoSaveWorkflowState('add_measurement_tap');
+  renderAll({ preserveInspector: false });
+  setStatus(`📊 Added Measurement / Log Tap "${cand}" to "${obj.title || obj.id}"`);
+  return obj;
+}
+window.addContainerMeasurementTap = addContainerMeasurementTap;
+
+function clearContainerMeasurementTaps(itemId) {
+  const obj = findAnyItemById(itemId) || findSelectedObject();
+  if (!obj) return null;
+  enterConstructionMode('clear measurement taps', false);
+  const prev = Array.isArray(obj.bottomPorts) ? obj.bottomPorts.slice() : [];
+  syncWiresOnPortListChange(obj, 'bottomPorts', prev, []);
+  obj.bottomPorts = [];
+  resetAutoFitOnItemAndParents(obj);
+  autoSaveWorkflowState('clear_measurement_taps');
+  renderAll({ preserveInspector: false });
+  setStatus(`🧹 Cleared Measurement / Log Taps on "${obj.title || obj.id}"`);
+  return obj;
+}
+window.clearContainerMeasurementTaps = clearContainerMeasurementTaps;
+
+function updateHubMode(busId, mode) {
+  const bus = (S.buses || []).find(b => b.id === busId) || findSelectedObject();
+  if (!bus) return null;
+  enterConstructionMode('edit hub mode', false);
+  bus.hubMode = mode === 'combiner' ? 'combiner' : 'passthrough';
+  if (bus.hubMode === 'combiner' && !String(bus.combinerScript || '').trim()) {
+    bus.combinerScript = 'combine_telemetry_manifest.py';
+  }
+  delete bus.hubInternalWires;
+  ensureHubInternalWiresV191(bus, S);
+  resetAutoFitOnItemAndParents(bus);
+  autoSaveWorkflowState('hub_mode');
+  renderAll({ preserveInspector: false });
+  setStatus(`🔀 Hub "${bus.title || bus.id}" mode set to ${bus.hubMode}`);
+  return bus;
+}
+window.updateHubMode = updateHubMode;
+
+function updateHubCombinerScript(busId, val) {
+  const bus = (S.buses || []).find(b => b.id === busId) || findSelectedObject();
+  if (!bus) return null;
+  enterConstructionMode('edit hub combiner script', false);
+  bus.combinerScript = String(val || '').trim();
+  autoSaveWorkflowState('hub_combiner_script');
+  renderAll({ preserveInspector: true });
+  return bus;
+}
+window.updateHubCombinerScript = updateHubCombinerScript;
+
+async function chooseScriptForHub(busId, ev = null) {
+  if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
+  const bus = (S.buses || []).find(b => b.id === busId) || findSelectedObject();
+  if (!bus) return { ok: false, error: 'Hub not found' };
+  if (typeof window !== 'undefined' && typeof window.showOpenFilePicker === 'function') {
+    try {
+      const [handle] = await window.showOpenFilePicker({
+        multiple: false,
+        types: [{
+          description: 'Combiner / Packager Scripts (.py, .js, .sh)',
+          accept: {
+            'text/x-python': ['.py'],
+            'application/javascript': ['.js', '.mjs'],
+            'text/plain': ['.py', '.js', '.sh']
+          }
+        }]
+      });
+      if (handle) {
+        enterConstructionMode('connect hub combiner script');
+        bus.hubMode = 'combiner';
+        bus.combinerScript = `scripts/${handle.name}`;
+        autoSaveWorkflowState('hub_script_picker');
+        renderAll({ preserveInspector: false });
+        setStatus(`🐍 Connected combiner script "${handle.name}" to "${bus.title || bus.id}"`);
+        return { ok: true, script: bus.combinerScript };
+      }
+    } catch (err) {
+      if (err && err.name === 'AbortError') return { ok: false, cancelled: true };
+    }
+  }
+  const entered = (typeof prompt === 'function')
+    ? prompt('Enter combiner/packager script path:', bus.combinerScript || 'STUB_concatenator.py')
+    : (bus.combinerScript || 'STUB_concatenator.py');
+  if (!entered) return { ok: false, cancelled: true };
+  enterConstructionMode('connect hub combiner script');
+  bus.hubMode = 'combiner';
+  bus.combinerScript = entered.trim();
+  autoSaveWorkflowState('hub_script_prompt');
+  renderAll({ preserveInspector: false });
+  setStatus(`🐍 Bound combiner script "${bus.combinerScript}" to "${bus.title || bus.id}"`);
+  return { ok: true, script: bus.combinerScript };
+}
+window.chooseScriptForHub = chooseScriptForHub;
+
 function spawnLlmQueryNode(x = 240, y = 210, custom = {}) {
   const rawProv = custom.llmProvider || (custom.llmConfig && custom.llmConfig.provider) || 'ollama';
   const provider = rawProv;
-  const defaultModel = provider === 'ollama'
-    ? 'llama3.2'
-    : (provider === 'gemini' ? 'gemini-2.5-pro' : (provider === 'openai' ? 'gpt-4o' : 'custom-model'));
+  const defaultModel = provider === 'repo_agent'
+    ? 'coding-agent'
+    : (provider === 'dotenv_runner'
+      ? 'env-runner'
+      : (provider === 'ollama'
+        ? 'llama3.2'
+        : (provider === 'gemini' ? 'gemini-2.5-pro' : (provider === 'openai' ? 'gpt-4o' : 'custom-model'))));
   const model = custom.llmModel || (custom.llmConfig && custom.llmConfig.model) || defaultModel;
   const promptText = custom.llmPrompt || (custom.llmConfig && custom.llmConfig.prompt) || 'Put the prompt or instructions here — wired input files + prompt get run -> output file comes out';
+  const customSteps = extractWhatThisNodeDoesLines(custom);
+  const defaultSteps = customSteps.length ? customSteps : [
+    '1. Wire an upstream File Container or Node into files_in.',
+    '2. Choose Provider: Repo / Coding Agent, Local Ollama, .env Script Runner, Gemini, OpenAI, or Custom Endpoint.',
+    '3. Inspect What Gets Sent & Security, enter instructions, and click ▶ Run Prompt + Input Files.'
+  ];
   const nodeItem = spawnAlgorithmNode(x, y, Object.assign({
     id: custom.id || uid('llm'),
     type: 'llm_query',
@@ -1633,15 +4065,13 @@ function spawnLlmQueryNode(x = 240, y = 210, custom = {}) {
     outPorts: custom.outPorts || ['files_out', 'response_out'],
     inputSpec: custom.inputSpec || 'files_in (wired upstream File Container / Node files) + context_in',
     outputSpec: custom.outputSpec || 'files_out (transformed output file written to downstream File Container) + response_out',
-    steps: custom.steps || [
-      '1. Wire an upstream File Container or Node into files_in.',
-      `2. Choose Provider: 🦙 Local Ollama (${OLLAMA_LOCAL_BASE_URL}), ✨ Gemini API, 🤖 OpenAI, or Custom Endpoint.`,
-      '3. Type your prompt / transformation instructions below and click ▶ Run Prompt + Input Files.'
-    ],
+    steps: defaultSteps,
+    substeps: defaultSteps,
+    whatThisNodeDoes: defaultSteps,
     params: custom.params || { provider, model },
     notes: custom.notes || ['First-class LLM / AI Query Node for transforming wired files'],
-    scriptBinding: custom.scriptBinding || 'modules/llm_query_runner.py',
-    w: custom.w || 380
+    scriptBinding: custom.scriptBinding || 'STUB_llm_query_runner.py',
+    w: custom.w || 390
   }, custom, { type: 'llm_query' }));
   nodeItem.llmProvider = provider;
   nodeItem.llmModel = model;
@@ -1654,6 +4084,7 @@ function spawnLlmQueryNode(x = 240, y = 210, custom = {}) {
   };
   nodeItem.lastLlmOutput = custom.lastLlmOutput || '';
   delete nodeItem.llmApiKey;
+  if (nodeItem.llmConfig) delete nodeItem.llmConfig.apiKey;
   autoSaveWorkflowState('spawn_llm_query_node');
   renderAll();
   return nodeItem;
@@ -1700,10 +4131,13 @@ function updateNodeLlmField(nodeId, field, val, shouldRenderAll = false) {
   if (field === 'llmProvider' || field === 'provider') {
     node.llmProvider = val;
     node.llmConfig.provider = val;
-    if (val === 'ollama' && (!node.llmModel || node.llmModel === 'custom-model')) node.llmModel = 'llama3.2';
-    if (val === 'gemini' && (!node.llmModel || node.llmModel === 'llama3.2')) node.llmModel = 'gemini-2.5-pro';
-    if (val === 'openai' && (!node.llmModel || node.llmModel === 'llama3.2')) node.llmModel = 'gpt-4o';
-    if (val === 'custom' && (!node.llmModel || node.llmModel === 'llama3.2')) node.llmModel = 'custom-model';
+    const genericModels = new Set(['', 'llama3.2', 'coding-agent', 'env-runner', 'gemini-2.5-pro', 'gpt-4o', 'custom-model']);
+    if (val === 'repo_agent' && genericModels.has(node.llmModel || '')) node.llmModel = 'coding-agent';
+    else if (val === 'dotenv_runner' && genericModels.has(node.llmModel || '')) node.llmModel = 'env-runner';
+    else if (val === 'ollama' && genericModels.has(node.llmModel || '')) node.llmModel = 'llama3.2';
+    else if (val === 'gemini' && genericModels.has(node.llmModel || '')) node.llmModel = 'gemini-2.5-pro';
+    else if (val === 'openai' && genericModels.has(node.llmModel || '')) node.llmModel = 'gpt-4o';
+    else if (val === 'custom' && genericModels.has(node.llmModel || '')) node.llmModel = 'custom-model';
     node.llmConfig.model = node.llmModel;
   } else if (field === 'llmModel' || field === 'model') {
     node.llmModel = val;
@@ -1759,8 +4193,46 @@ async function runLlmQueryNode(nodeId, ev = null) {
   setStatus(`🤖 Running LLM Query Node "${node.title}" via ${provider} (${model}) on ${inputFiles.length} wired input file(s)...`);
 
   let responseText = '';
+  let bridged = false;
+  let bridgeResult = null;
+  let taskBrief = '';
+  const outPortsList = Array.isArray(node.outPorts) ? node.outPorts.slice() : [];
   try {
-    if (provider === 'ollama' && typeof fetch === 'function') {
+    if (provider === 'repo_agent') {
+      taskBrief = [
+        `Repo Agent Task Brief — ${node.title || node.id}`,
+        `Prompt: ${promptText || '(none)'}`,
+        `Wired files_in: ${inputFiles.length ? inputFiles.join(', ') : '(none)'}`,
+        `Expected outPorts: ${outPortsList.length ? outPortsList.join(', ') : '(none)'}`
+      ].join('\n');
+      const bridge = getActiveRepoAgentBridge();
+      if (bridge) {
+        bridged = true;
+        bridgeResult = await bridge.dispatchTask({
+          workflowId: S.workflowId || '',
+          workflowTitle: S.title || '',
+          nodeId: node.id,
+          nodeTitle: node.title || node.id,
+          model,
+          prompt: promptText,
+          inputFiles,
+          outPorts: outPortsList,
+          taskBrief,
+          workflow: sanitizeWorkflowStateForExport(S)
+        });
+        responseText = (bridgeResult && (bridgeResult.summary || bridgeResult.message || bridgeResult.response))
+          || `Dispatched via ${bridge.label || 'Local Bridge'}: ${node.title || node.id}`;
+      } else {
+        try {
+          if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+            navigator.clipboard.writeText(taskBrief).catch(() => {});
+          }
+        } catch (clipErr) {}
+        responseText = taskBrief;
+      }
+    } else if (provider === 'dotenv_runner') {
+      responseText = `[DOTENV RUNNER · ${model}] Prepared local script run (${node.scriptBinding || 'STUB_llm_query_runner.py'}) for ${inputFiles.length} file(s): ${inputFiles.join(', ') || 'none'} (zero browser key).`;
+    } else if (provider === 'ollama' && typeof fetch === 'function') {
       const fullPrompt = `${promptText}\n\nWired Input Files:\n${inputFiles.map(f => '- ' + f).join('\n') || '(none)'}`;
       const resp = await fetch(OLLAMA_LOCAL_BASE_URL + OLLAMA_GENERATE_PATH, {
         method: 'POST',
@@ -1796,7 +4268,7 @@ async function runLlmQueryNode(nodeId, ev = null) {
   node.lastLlmOutputFile = outFilename;
   node.lastLlmInputFiles = inputFiles;
 
-  // Push output file to any downstream wired File Container or Node!
+  // Push output file to any downstream wired File Container or Gauge sink!
   const outgoingWires = (S.wires || []).filter(w => w && w.fromNode === node.id);
   const updatedBuckets = [];
   outgoingWires.forEach(w => {
@@ -1809,10 +4281,17 @@ async function runLlmQueryNode(nodeId, ev = null) {
       updatedBuckets.push(destBucket.title || destBucket.id);
     }
   });
+  const updatedGauges = propagateSignalToDownstreamGauges(node.id, `${node.title || node.id} (${provider})`, 'PASS');
 
   autoSaveWorkflowState('run_llm_query_node');
   renderAll({ preserveInspector: true });
-  setStatus(`✅ LLM Node "${node.title}" finished (${provider}/${model}) -> ${outFilename}${updatedBuckets.length ? ` (written to ${updatedBuckets.join(', ')})` : ''}`);
+  if (provider === 'repo_agent') {
+    setStatus(bridged
+      ? `🤖 ${responseText}`
+      : `📋 Generated Repo Agent Task Brief for "${node.title}" (${inputFiles.length} wired file(s), 0 API keys)`);
+  } else {
+    setStatus(`✅ LLM Node "${node.title}" finished (${provider}/${model}) -> ${outFilename}${updatedBuckets.length ? ` (written to ${updatedBuckets.join(', ')})` : ''}`);
+  }
   return {
     ok: true,
     provider,
@@ -1820,7 +4299,11 @@ async function runLlmQueryNode(nodeId, ev = null) {
     inputFiles,
     outputFile: outFilename,
     response: responseText,
-    updatedBuckets
+    updatedBuckets,
+    updatedGauges,
+    bridged,
+    bridgeResult,
+    taskBrief
   };
 }
 window.runLlmQueryNode = runLlmQueryNode;
@@ -1832,6 +4315,9 @@ function addNode(type = 'empty', x = 140, y = 150, custom = {}) {
   }
   if (norm === 'llm_query' || norm === 'llm') {
     return spawnLlmQueryNode(x, y, custom);
+  }
+  if (norm === 'gauge' || norm === 'logger' || norm === 'tap_sink') {
+    return spawnGaugeNode(x, y, custom);
   }
   if (norm === 'external_in') {
     return spawnExternalInNode(x, y, custom);
@@ -1861,7 +4347,7 @@ function spawnExternalInNode(x = 170, y = 210, custom = {}) {
     ui_label: custom.ui_label || 'Upstream Workflow',
     params: { connector_role: 'external_in', upstream_source: 'external_workflow' },
     notes: ['Upstream external workflow connector'],
-    scriptBinding: 'modules/upstream_connector.py',
+    scriptBinding: 'STUB_upstream_connector.py',
     w: 315
   }, custom, { type: 'external_in' }));
 }
@@ -1884,7 +4370,7 @@ function spawnExternalOutNode(x = 680, y = 210, custom = {}) {
     ui_label: custom.ui_label || 'Downstream Workflow',
     params: { connector_role: 'external_out', downstream_target: 'external_workflow' },
     notes: ['Downstream external workflow connector'],
-    scriptBinding: 'modules/downstream_connector.py',
+    scriptBinding: 'STUB_downstream_connector.py',
     w: 315
   }, custom, { type: 'external_out' }));
 }
@@ -1920,22 +4406,33 @@ function spawnFileContainer(x = 520, y = 160, custom = {}) {
 }
 
 function spawnBusNode(x = 420, y = 170, custom = {}) {
-  enterConstructionMode('add bus bar', false);
+  enterConstructionMode('add hub / wire organizer', false);
+  const hubMode = custom.hubMode === 'combiner' ? 'combiner' : 'passthrough';
+  const combinerScript = custom.combinerScript !== undefined
+    ? String(custom.combinerScript)
+    : (hubMode === 'combiner' ? 'STUB_concatenator.py' : '');
   const item = {
     id: custom.id || uid('bus'),
-    title: custom.title || `⚡ Bus Bar ${S.buses.length + 1}`,
+    title: custom.title || `🔀 Hub / Wire Organizer ${S.buses.length + 1}`,
     orientation: custom.orientation || 'left-right',
-    inPorts: custom.inPorts || ['in_1', 'in_2', 'in_3'],
-    outPorts: custom.outPorts || ['out_1', 'out_2', 'out_3'],
-    bottomPorts: custom.bottomPorts || ['bus_tap'],
-    notes: custom.notes || ['Shared multi-port electrical schematic bus bar'],
-    x, y, w: 250, h: 140
+    hubMode: hubMode,
+    combinerScript: combinerScript,
+    inPorts: Array.isArray(custom.inPorts) ? custom.inPorts.slice() : ['in_1', 'in_2', 'in_3'],
+    outPorts: Array.isArray(custom.outPorts) ? custom.outPorts.slice() : ['out_1', 'out_2', 'out_3'],
+    bottomPorts: Array.isArray(custom.bottomPorts) ? custom.bottomPorts.slice() : [],
+    notes: Array.isArray(custom.notes) ? custom.notes.slice() : [hubMode === 'combiner'
+      ? `Combines / packages wired inputs via ${combinerScript || 'STUB_concatenator.py'}`
+      : 'Routes independent wires cleanly 1-to-1 without merging payloads'],
+    x, y, w: custom.w || 265, h: custom.h || 165
   };
+  ensureHubInternalWiresV191(item, S);
   S.buses.push(item);
   selectedItem = { kind: 'bus', id: item.id };
   renderAll();
   return item;
 }
+window.spawnBusNode = spawnBusNode;
+window.spawnHubNode = spawnBusNode;
 
 
 const HONEYCOMB_PALETTE_HEX = [
@@ -2418,6 +4915,7 @@ function syncWireModeToolbarUI() {
   if (typeof document !== 'undefined' && document.body && document.body.classList) {
     document.body.classList.toggle('format-painter-active', painterOn);
   }
+  if (typeof syncWireDetailButtonUIV190 === 'function') syncWireDetailButtonUIV190();
   const svgEl = (typeof wireSvg !== 'undefined' && wireSvg) ? wireSvg : (typeof document !== 'undefined' ? document.getElementById('wire-svg') : null);
   if (svgEl && svgEl.classList) {
     const interactive = wireSel || wireDel || painterOn;
@@ -3057,9 +5555,7 @@ function estimateItemHeight(item, kind) {
     const paramsH = paramCount > 0 ? (cs.params ? 22 : (24 + paramCount * 16)) : 0;
     const hasIoSpec = Boolean(item.inputSpec || item.outputSpec);
     const ioSpecH = hasIoSpec ? (cs.io_specs ? 22 : 44) : 0;
-    const stepsArr = Array.isArray(item.steps) && item.steps.length
-      ? item.steps
-      : (Array.isArray(item.substeps) ? item.substeps : []);
+    const stepsArr = extractWhatThisNodeDoesLines(item);
     const substepsCount = stepsArr.length;
     const substepsH = substepsCount > 0 ? (cs.substeps ? 22 : Math.min(115, 22 + substepsCount * 22)) : 0;
     const rulesArr = Array.isArray(item.rules) && item.rules.length
@@ -3068,7 +5564,11 @@ function estimateItemHeight(item, kind) {
     const rulesCount = rulesArr.length;
     const rulesH = rulesCount > 0 ? (cs.rules ? 22 : Math.min(100, 22 + rulesCount * 20)) : 0;
     const uiLaunchH = (item.ui_url || item.uiUrl) ? 26 : 0;
-    const calcH = 70 + portRows * 40 + uiLaunchH + ioSpecH + substepsH + rulesH + paramsH + 16;
+    const gaugeExtraH = item.type === 'gauge' ? ((item.gaugeStyle || item.tapVariable) ? 168 : 92) : 0;
+    const subExpanded = Boolean(item.scriptSubnode && (typeof item._subnodeExpandOverride === 'boolean' ? item._subnodeExpandOverride : getWireDetailModeV190(S) === 'full_contracts'));
+    const scriptSubH = item.scriptSubnode ? (subExpanded ? 115 : 32) : 0;
+    const llmExtraH = (item.type === 'llm_query' || item.llmProvider || item.llmPrompt) ? 220 : 0;
+    const calcH = 70 + portRows * 40 + uiLaunchH + gaugeExtraH + scriptSubH + llmExtraH + ioSpecH + substepsH + rulesH + paramsH + 16;
     const anyCol = Boolean(cs.params || cs.io_specs || cs.substeps || cs.rules);
     const minH = Math.max(anyCol ? 148 : 205, calcH);
     return (item && item.userResized && item.h) ? Math.max(item.h, minH) : minH;
@@ -3083,8 +5583,8 @@ function estimateItemHeight(item, kind) {
   }
   if (kind === 'bus') {
     const portRows = Math.max((item.inPorts || []).length, (item.outPorts || []).length, 2);
-    const calcH = 82 + portRows * 40 + 24;
-    const minH = Math.max(205, calcH);
+    const calcH = 82 + portRows * 40 + 52;
+    const minH = Math.max(215, calcH);
     return (item && item.userResized && item.h) ? Math.max(item.h, minH) : minH;
   }
   return item.h || 185;
@@ -3440,6 +5940,12 @@ function computeConnectedPathway(selItem, wires) {
   const portKeys = new Set();
   if (!selId) {
     return { active: false, selectedId: '', selectedKind: '', nodeIds, neighborIds, wireIdxSet, wireIdSet, portKeys };
+  }
+  if (selKind === 'hub_wire' && selItem && selItem.hubId) {
+    const hId = String(selItem.hubId);
+    nodeIds.add(hId);
+    neighborIds.add(hId);
+    return { active: true, selectedId: selId, selectedKind: 'hub_wire', nodeIds, neighborIds, wireIdxSet, wireIdSet, portKeys };
   }
   const list = Array.isArray(wires) ? wires : [];
   if (selKind === 'wire') {
@@ -4362,24 +6868,47 @@ function renderWires() {
 
   const defaultColor = style === 'subway_pulse' ? '#dbbc7f' : (style === 'ortho_pulse' ? '#a7c080' : '#7fbbb3');
   const tracerActive = Boolean(flowTracerState && flowTracerState.active);
+  const wireDetailMode = getWireDetailModeV190(S);
+  const boundaryBreachMapV191 = {};
+  if (typeof detectContainerBoundaryBreachesV191 === 'function') {
+    detectContainerBoundaryBreachesV191(S).forEach(b => { boundaryBreachMapV191[b.wireId] = b; });
+  }
   const renderWireEntry = (entry, isGlowLayer) => {
     const { w, p1, p2, d, wpAttr, pts } = entry;
+    const contract = evaluateWireContractV190(w, S);
+    const isSemantic = contract.kind === 'semantic';
+    const isContractErr = !isSemantic && !contract.ok;
+    const breachInfo = boundaryBreachMapV191[w.id] || null;
     const customWireHex = normalizeHexColor(w && w.color);
     const isSelectedWire = Boolean(selectedItem && selectedItem.kind === 'wire' && selectedItem.id === w.id);
     const isTraceActiveWire = Boolean(tracerActive && flowTracerState.activeWireId === w.id && (flowTracerState.phase === 'transit_in' || flowTracerState.phase === 'emit_out'));
     const isTraceDoneWire = Boolean(tracerActive && flowTracerState.completedWireIds && flowTracerState.completedWireIds.has(w.id));
-    const pulseCls = (isFlowPulsing && (!pathway.active || Boolean(pulseTimer))) ? ' wire-pulsing-flow' : '';
+    const pulseCls = (!isSemantic && isFlowPulsing && (!pathway.active || Boolean(pulseTimer))) ? ' wire-pulsing-flow' : '';
     const traceCls = isTraceActiveWire ? ' trace-active-wire' : (isTraceDoneWire ? ' trace-completed-wire' : '');
+    const errCls = (isContractErr ? ' wire-contract-error' : '') + (breachInfo ? ' wire-boundary-breach' : '');
+    const semCls = isSemantic ? ' wire-semantic-edge' : '';
     const wireStateCls = isSelectedWire
       ? 'wire-selected'
       : (pathway.active && !isTraceActiveWire && !isTraceDoneWire ? (isGlowLayer ? 'wire-pathway-glow' : 'wire-pathway-dim') : '');
-    const wireCls = 'wire-path' + (wireStateCls ? ' ' + wireStateCls : '') + traceCls + pulseCls;
-    const baseStroke = isTraceActiveWire
-      ? '#facc15'
-      : (isTraceDoneWire ? '#34d399' : (customWireHex || (isSelectedWire ? defaultColor : (isGlowLayer ? '#38bdf8' : defaultColor))));
-    const baseWidth = isTraceActiveWire ? '3.6' : ((isGlowLayer || isSelectedWire || isTraceDoneWire) ? '3' : '2.4');
+    const wireCls = 'wire-path' + (wireStateCls ? ' ' + wireStateCls : '') + traceCls + pulseCls + errCls + semCls;
+    const baseStroke = isContractErr
+      ? '#ef4444'
+      : (breachInfo
+        ? '#f59e0b'
+        : (isTraceActiveWire
+          ? '#facc15'
+          : (isTraceDoneWire
+            ? '#34d399'
+            : (isSemantic ? (customWireHex || '#dbbc7f') : (customWireHex || (isSelectedWire ? defaultColor : (isGlowLayer ? '#38bdf8' : defaultColor)))))));
+    const baseWidth = isContractErr ? '3.2' : (isTraceActiveWire ? '3.6' : ((isGlowLayer || isSelectedWire || isTraceDoneWire) ? '3' : '2.4'));
+    const dashAttr = isSemantic ? ' stroke-dasharray="6 4"' : (breachInfo ? ' stroke-dasharray="5 3"' : '');
     const pinCls = (pathway.active && !isGlowLayer && !isSelectedWire && !isTraceActiveWire) ? 'wire-pathway-dim' : ((isGlowLayer || isSelectedWire || isTraceActiveWire) ? 'wire-port-pin-glow' : '');
-    svgParts.push(`<path class="wire-hit" data-wire-id="${w.id}" d="${d}" stroke="transparent" stroke-width="14" fill="none" onclick="handleWireHitClick(event, '${w.id}')" />`);
+    const breachTitleSuffix = breachInfo ? ` | ⚠ Boundary Breach (${breachInfo.containerId})` : '';
+    const titleTxt = isSemantic
+      ? `Semantic Edge: ${contract.verb} (${w.fromNode}.${w.fromPort} -> ${w.toNode}.${w.toPort})${breachTitleSuffix}`
+      : `Wire ${w.id}: ${w.fromNode}.${w.fromPort} -> ${w.toNode}.${w.toPort} | Carrier: ${contract.carrier} | Vars: [${(contract.upstreamVars || []).join(', ')}] | ${contract.ok ? 'OK' : contract.reason}${breachTitleSuffix}`;
+    const escTitleTxt = escSvgXml(titleTxt);
+    svgParts.push(`<path class="wire-hit" data-wire-id="${w.id}" d="${d}" stroke="transparent" stroke-width="14" fill="none" onclick="handleWireHitClick(event, '${w.id}')"><title>${escTitleTxt}</title></path>`);
     if (isTraceActiveWire) {
       svgParts.push(`<path class="trace-active-wire-halo" data-wire-id="${w.id}" d="${d}" stroke="#facc15" stroke-width="9" opacity="0.28" fill="none" />`);
     } else if (isSelectedWire) {
@@ -4389,9 +6918,44 @@ function renderWires() {
     } else {
       svgParts.push(`<path class="${(pathway.active && !isTraceDoneWire ? 'wire-pathway-dim' : '') + pulseCls}" d="${d}" stroke="#111518" stroke-width="5.2" fill="none" opacity="0.72" />`);
     }
-    svgParts.push(`<path class="${wireCls.trim()}" data-wire-id="${w.id}" data-waypoints="${wpAttr}" d="${d}" stroke="${baseStroke}" stroke-width="${baseWidth}" fill="none" />`);
-    svgParts.push(`<circle class="${pinCls}" cx="${p1.x}" cy="${p1.y}" r="${(isGlowLayer || isTraceActiveWire) ? 5 : 4}" fill="#a7c080" stroke="#111518" stroke-width="1.2" />`);
-    svgParts.push(`<circle class="${pinCls}" cx="${p2.x}" cy="${p2.y}" r="${(isGlowLayer || isTraceActiveWire) ? 5 : 4}" fill="#dbbc7f" stroke="#111518" stroke-width="1.2" />`);
+    svgParts.push(`<path class="${wireCls.trim()}" data-wire-id="${w.id}" data-waypoints="${wpAttr}" data-wire-kind="${isSemantic ? 'semantic' : 'data'}" data-contract-ok="${contract.ok ? '1' : '0'}" d="${d}" stroke="${baseStroke}" stroke-width="${baseWidth}"${dashAttr} fill="none"><title>${escTitleTxt}</title></path>`);
+    const c1x = p1.x + Math.max(50, Math.abs(p2.x - p1.x) * 0.45);
+    const c2x = p2.x - Math.max(50, Math.abs(p2.x - p1.x) * 0.45);
+    const arrowPose = isSchem
+      ? getPointAndTangentOnPolylineV190(pts && pts.length >= 2 ? pts : [p1, p2], 0.65)
+      : getPointAndTangentOnCubicBezierV190(p1, { x: c1x, y: p1.y }, { x: c2x, y: p2.y }, p2, 0.65);
+    svgParts.push(`<polygon class="wire-arrowhead" data-wire-id="${w.id}" points="-6,-4.5 6,0 -6,4.5" transform="translate(${arrowPose.x.toFixed(1)}, ${arrowPose.y.toFixed(1)}) rotate(${arrowPose.angle.toFixed(1)})" fill="${baseStroke}" stroke="#111518" stroke-width="0.9" pointer-events="none" />`);
+    const pillPose = isSchem
+      ? getPointAndTangentOnPolylineV190(pts && pts.length >= 2 ? pts : [p1, p2], 0.44)
+      : getPointAndTangentOnCubicBezierV190(p1, { x: c1x, y: p1.y }, { x: c2x, y: p2.y }, p2, 0.44);
+    let midLabel = '';
+    let midCls = 'wire-mid-pill';
+    if (isSemantic) {
+      midLabel = `🔗 ${contract.verb}`;
+      midCls += ' wire-mid-semantic';
+    } else if (isContractErr) {
+      midLabel = `⚠ ${contract.reason}`;
+      midCls += ' wire-mid-error';
+    } else if (breachInfo) {
+      midLabel = '⚠ Boundary Breach';
+      midCls += ' wire-mid-breach';
+    } else if (wireDetailMode === 'types_labels' || wireDetailMode === 'full_contracts') {
+      const varCnt = (contract.upstreamVars && contract.upstreamVars.length) || (contract.matchedVars && contract.matchedVars.length) || 0;
+      const aliasTxt = (wireDetailMode === 'full_contracts' && contract.appliedAliases && contract.appliedAliases.length)
+        ? ` · ${contract.appliedAliases[0]}`
+        : ` · ${varCnt} vars`;
+      midLabel = `${contract.carrier}${aliasTxt}`;
+      midCls += ' wire-mid-data';
+    }
+    if (midLabel) {
+      const escMid = escSvgXml(midLabel);
+      const pw = Math.max(58, Math.round(midLabel.length * 6.1 + 16));
+      const prx = Math.round(pillPose.x - pw / 2);
+      const pry = Math.round(pillPose.y - 10);
+      svgParts.push(`<g class="${midCls}" data-wire-id="${w.id}" pointer-events="none"><rect x="${prx}" y="${pry}" width="${pw}" height="18" rx="9" /><text x="${Math.round(pillPose.x)}" y="${Math.round(pillPose.y + 3)}" text-anchor="middle">${escMid}</text></g>`);
+    }
+    svgParts.push(`<circle class="${pinCls}" cx="${p1.x}" cy="${p1.y}" r="${(isGlowLayer || isTraceActiveWire) ? 5 : 4}" fill="${isContractErr ? '#ef4444' : '#a7c080'}" stroke="#111518" stroke-width="1.2" />`);
+    svgParts.push(`<circle class="${pinCls}" cx="${p2.x}" cy="${p2.y}" r="${(isGlowLayer || isTraceActiveWire) ? 5 : 4}" fill="${isContractErr ? '#ef4444' : '#dbbc7f'}" stroke="#111518" stroke-width="1.2" />`);
     if (isTraceActiveWire) {
       const tokenPt = getPointAlongPolyline(pts && pts.length >= 2 ? pts : [p1, p2], flowTracerState.phaseProgress);
       const fileTxt = String(flowTracerState.activeFileLabel || 'payload.json').slice(0, 26);
@@ -4566,7 +7130,10 @@ function renderContainerBox(cont, kind, boxCls, hdrCls, icon) {
   const effH = isCol ? getCollapsedContainerHeight(cont) : cont.h;
   const inHtml = (cont.inPorts || ['in']).map(p => `<div class="port-row port-row-stacked port-row-in"><span class="cont-port-lbl port-lbl-above">${p}</span>${renderPortDot(cont.id, p, 'in')}</div>`).join('');
   const outHtml = (cont.outPorts || ['out']).map(p => `<div class="port-row port-row-stacked port-row-out"><span class="cont-port-lbl port-lbl-above">${p}</span>${renderPortDot(cont.id, p, 'out')}</div>`).join('');
-  const botHtml = (cont.bottomPorts || ['bus']).map(p => `<span class="port-row">${renderPortDot(cont.id, p, 'bottom')}<span>${p}</span></span>`).join('');
+  const bottomPortsArr = Array.isArray(cont.bottomPorts) ? cont.bottomPorts : [];
+  const botHtml = bottomPortsArr.length > 0
+    ? `<div class="container-bottom-ports" title="Measurement / Log Tap (Optional): downward tap for counters, metrics, audit logs, or pass/fail signals">${bottomPortsArr.map(p => `<span class=\"port-row\">${renderPortDot(cont.id, p, 'bottom')}<span>${p}</span></span>`).join('')}</div>`
+    : '';
   const notesArr = cont.notes || cont.checklist || [];
   const cs = cont.collapsedSections || {};
   const notesCol = Boolean(cs.notes);
@@ -4581,10 +7148,16 @@ function renderContainerBox(cont, kind, boxCls, hdrCls, icon) {
     : '';
   const collapseLabel = isCol ? '[+] Expand' : '[–] Collapse';
   const tint = getItemColorInlineStyles(cont, kind);
+  const contBreaches = (typeof detectContainerBoundaryBreachesV191 === 'function')
+    ? detectContainerBoundaryBreachesV191(S).filter(b => b.containerId === cont.id)
+    : [];
+  const breachBadgeHtml = contBreaches.length
+    ? `<span class="cont-breach-badge" title="Wire crosses container wall without terminating on a boundary port">⚠ ${contBreaches.length} Wall Breach</span>`
+    : '';
   return `
     <div class="${boxCls} ${sel} ${colCls} ${overlayCls}" data-item-id="${cont.id}" style="left:${cont.x}px;top:${cont.y}px;width:${cont.w}px;height:${effH}px;${tint.cardStyle}" onmousedown="startDragItem(event, '${kind}', '${cont.id}')">
       <div class="${hdrCls}" style="${tint.hdrStyle}">
-        <span>${icon} ${cont.title} ${isCol ? '<small style="color:var(--gold);">(Black-Box)</small>' : ''}</span>
+        <span>${icon} ${cont.title} ${isCol ? '<small style="color:var(--gold);">(Black-Box)</small>' : ''} ${breachBadgeHtml}</span>
         <span style="display:flex;gap:4px;align-items:center;">
           <button class="hdr-mini-btn no-drag" onclick="toggleContainerCollapse(event, '${kind}', '${cont.id}')" title="${isCol ? 'Expand Black-Box Subsystem Container' : 'Collapse Container into Black-Box Subsystem'}">${collapseLabel}</button>
           <button class="hdr-mini-btn no-drag" style="color:var(--red);" onclick="deleteItemById(event, '${kind}', '${cont.id}')" title="Delete">🗑️</button>
@@ -4595,7 +7168,7 @@ function renderContainerBox(cont, kind, boxCls, hdrCls, icon) {
         <div class="port-col port-col-out">${outHtml}</div>
       </div>
       ${notesHtml}
-      <div class="container-bottom-ports">${botHtml}</div>
+      ${botHtml}
       ${isCol ? '' : `<div class="resize-handle" onmousedown="startResizeItem(event, '${kind}', '${cont.id}')"></div>`}
     </div>
   `;
@@ -4617,6 +7190,7 @@ function renderAll(options = {}) {
   syncOfflineModeUI();
   syncWorkflowStatusUI();
   syncWireModeToolbarUI();
+  if (typeof syncWireDetailButtonUIV190 === 'function') syncWireDetailButtonUIV190();
   renderCustomNodesPalette();
   document.body.classList.toggle('clean-unselected-view', !selectedItem);
   document.body.classList.toggle('hide-left-palette', Boolean(S.hideLeftPalette));
@@ -4678,18 +7252,25 @@ function renderAll(options = {}) {
     const cs = n.collapsedSections || {};
     const nodeType = n.type || 'step';
     const effectiveInPorts = Array.isArray(n.inPorts) ? n.inPorts : (Array.isArray(n.inputs) ? n.inputs : []);
-    const inPortsHtml = effectiveInPorts.map(p => `
+    const nodeCarrierMicro = n.carrierType ? `<span class="port-carrier-micro">[${escSvgXml(n.carrierType)}]</span>` : '';
+    const inPortsHtml = effectiveInPorts.map(p => {
+      const dynLbl = resolveDynamicPortDisplayLabelV190(n, p, 'in', S);
+      return `
       <div class="port-row port-row-stacked port-row-in">
-        <span class="port-lbl-above">${p}</span>
+        <span class="port-lbl-above" title="${escSvgXml(p)}">${escSvgXml(dynLbl)}${nodeCarrierMicro}</span>
         ${renderPortDot(n.id, p, 'in')}
       </div>
-    `).join('');
-    const outPortsHtml = (n.outPorts || []).map(p => `
+    `;
+    }).join('');
+    const outPortsHtml = (n.outPorts || []).map(p => {
+      const dynLbl = resolveDynamicPortDisplayLabelV190(n, p, 'out', S);
+      return `
       <div class="port-row port-row-stacked port-row-out">
-        <span class="port-lbl-above">${p}</span>
+        <span class="port-lbl-above" title="${escSvgXml(p)}">${escSvgXml(dynLbl)}${nodeCarrierMicro}</span>
         ${renderPortDot(n.id, p, 'out')}
       </div>
-    `).join('');
+    `;
+    }).join('');
     const paramEntries = Object.entries(n.params || {});
     const paramsCol = Boolean(cs.params);
     const paramsHtml = paramEntries.length ? `
@@ -4719,24 +7300,18 @@ function renderAll(options = {}) {
         `}
       </div>
     ` : '';
-    const substepsArr = Array.isArray(n.steps) && n.steps.length
-      ? n.steps
-      : (Array.isArray(n.bullets) && n.bullets.length
-        ? n.bullets
-        : (Array.isArray(n.substeps) && n.substeps.length ? n.substeps : []));
+    const substepsArr = extractWhatThisNodeDoesLines(n);
     const substepsCol = Boolean(cs.substeps);
-    const substepsHeaderLabel = nodeType === 'idea'
-      ? '💡 What You Do Here'
-      : (nodeType === 'external_in'
-        ? '📥 What Happens in Upstream Workflow'
-        : (nodeType === 'external_out'
-          ? '📤 What Happens in Downstream Workflow'
-          : '🔧 What You Do in This UI'));
+    const substepsHeaderLabel = nodeType === 'external_in'
+      ? '📥 What This Node Is / Does (Upstream)'
+      : (nodeType === 'external_out'
+        ? '📤 What This Node Is / Does (Downstream)'
+        : '📝 What This Node Is / Does');
     const substepsHtml = substepsArr.length ? `
       <div class="node-substeps-box" style="display:flex;flex-direction:column;gap:4px;background:rgba(167,192,128,0.08);border:1px solid rgba(167,192,128,0.28);padding:5px 7px;border-radius:6px;max-height:${n.userResized ? 'none' : '150px'};overflow-y:auto;">
-        <div class="collapsible-sec-hdr no-drag" onclick="toggleNodeSectionCollapse('${n.id}', 'substeps', event)" title="Click to ${substepsCol ? 'expand' : 'collapse'} Steps (${substepsArr.length}) — container resizes to fit">
+        <div class="collapsible-sec-hdr no-drag" onclick="toggleNodeSectionCollapse('${n.id}', 'substeps', event)" title="Click to ${substepsCol ? 'expand' : 'collapse'} What This Node Is / Does (${substepsArr.length}) — container resizes to fit">
           <span style="font-size:10px;font-weight:700;color:var(--accent);">${substepsHeaderLabel} (${substepsArr.length})</span>
-          <span class="collapse-arrow-badge">${substepsCol ? '▸ ' + substepsArr.length + ' steps' : '▾ Hide'}</span>
+          <span class="collapse-arrow-badge">${substepsCol ? '▸ ' + substepsArr.length + ' notes' : '▾ Hide'}</span>
         </div>
         ${substepsCol ? '' : `<ul class="node-steps-list" style="margin:0;padding-left:15px;display:flex;flex-direction:column;gap:3px;">${substepsArr.map(ss => `<li style="font-size:10px;line-height:1.35;color:var(--fg0);">${ss}</li>`).join('')}</ul>`}
       </div>
@@ -4772,12 +7347,41 @@ function renderAll(options = {}) {
         ${nodePathButtonsArr.map(pb => `<button type="button" class="hdr-mini-btn no-drag" style="background:rgba(56,189,248,0.14);border:1px solid rgba(56,189,248,0.42);color:#7dd3fc;padding:3px 7px;font-size:10px;font-weight:700;" onclick="openLocalPath('${escSvgXml(pb.path || '')}', '${escSvgXml(pb.mode || (pb.kind === 'folder' ? 'explorer' : 'app'))}', event)" title="Open ${escSvgXml(pb.path || '')} (${pb.mode || (pb.kind === 'folder' ? 'Windows Explorer' : 'Associated App')})">${pb.kind === 'folder' ? '📂' : '📄'} ${escSvgXml(pb.label || pb.path || 'Open')}</button>`).join('')}
       </div>
     ` : '';
+    const isGaugeNode = nodeType === 'gauge';
+    if (isGaugeNode) {
+      n.outPorts = [];
+      n.outputs = [];
+      if (!n.gaugeMode) n.gaugeMode = 'run_counter';
+      if (typeof n.gaugeCount !== 'number') n.gaugeCount = Number(n.gaugeCount) || 0;
+      if (!n.gaugeStatus) n.gaugeStatus = 'IDLE';
+      if (!Array.isArray(n.gaugeLogs)) n.gaugeLogs = [];
+      n.gaugeDisplay = formatGaugeDisplay(n);
+    }
+    const gaugeHealth = isGaugeNode ? evaluateGaugeHealthV190(n, S) : null;
+    const gaugeLogsSlice = isGaugeNode ? (n.gaugeLogs || []).slice(-3).reverse() : [];
+    const hasSvgGaugeStyle = isGaugeNode && (n.gaugeStyle || n.tapVariable);
+    const gaugeSvgHtml = hasSvgGaugeStyle ? buildGaugeSvgV190(n, gaugeHealth) : '';
+    const gaugeCardPanelHtml = isGaugeNode ? `
+      <div class="node-gauge-panel no-drag" data-gauge-panel="${n.id}" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
+          <strong style="font-size:10px;color:#a5f3fc;">📊 ${escSvgXml(n.gaugeStyle || n.gaugeMode || 'run_counter')}${n.tapVariable ? ` · <code>${escSvgXml(n.tapVariable)}</code>` : ''}</strong>
+          <span style="display:inline-flex;gap:3px;">
+            <button type="button" class="hdr-mini-btn no-drag" style="padding:1px 5px;font-size:9px;background:rgba(6,182,212,0.22);border-color:#22d3ee;color:#cffafe;" onclick="triggerGaugeSampleTick('${n.id}', event, 'PASS')" title="Simulate an incoming tap observation">+1 Tick</button>
+            <button type="button" class="hdr-mini-btn no-drag" style="padding:1px 5px;font-size:9px;" onclick="resetGaugeNode('${n.id}', event)" title="Reset gauge counter &amp; logs">↺</button>
+          </span>
+        </div>
+        ${gaugeSvgHtml}
+        <div class="gauge-readout-bar" data-gauge-readout="${n.id}">${escSvgXml(n.gaugeDisplay || formatGaugeDisplay(n))}</div>
+        ${gaugeLogsSlice.length ? `<div class="gauge-log-list">${gaugeLogsSlice.map(lg => `<div class="gauge-log-row">${escSvgXml(lg)}</div>`).join('')}</div>` : '<div style="font-size:9.5px;color:#94a3b8;font-family:Consolas,monospace;">Waiting for upstream signal / tap_in...</div>'}
+      </div>
+    ` : '';
     const isLlmNode = Boolean(nodeType === 'llm_query' || n.llmProvider || n.llmPrompt || (n.llmConfig && typeof n.llmConfig === 'object'));
     const rawLlmProv = n.llmProvider || (n.llmConfig && n.llmConfig.provider) || 'ollama';
     const llmProv = rawLlmProv;
     const llmMod = n.llmModel || (n.llmConfig && n.llmConfig.model) || 'llama3.2';
     const llmPrmpt = n.llmPrompt || (n.llmConfig && n.llmConfig.prompt) || '';
     const wiredInFiles = isLlmNode ? collectUpstreamFilesForNode(n.id) : [];
+    const llmSecurityHtml = isLlmNode ? renderLlmSecurityStripHtml(n, wiredInFiles) : '';
     const llmCardControlsHtml = isLlmNode ? `
       <div class="node-llm-box no-drag" style="display:flex;flex-direction:column;gap:5px;background:rgba(168,85,247,0.1);border:1px solid rgba(168,85,247,0.42);padding:6px 8px;border-radius:6px;" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
@@ -4786,18 +7390,16 @@ function renderAll(options = {}) {
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
           <select class="no-drag" style="font-size:10px;padding:3px 5px;" onchange="updateNodeLlmField('${n.id}', 'llmProvider', this.value, true)">
-            <option value="ollama" ${llmProv === 'ollama' ? 'selected' : ''}>🦙 Local Ollama (${OLLAMA_LOCAL_BASE_URL})</option>
-            <option value="gemini" ${llmProv === 'gemini' ? 'selected' : ''}>✨ Gemini API (gemini-2.5-pro / flash)</option>
-            <option value="openai" ${llmProv === 'openai' ? 'selected' : ''}>🤖 OpenAI / Custom API Endpoint</option>
-            <option value="custom" ${llmProv === 'custom' ? 'selected' : ''}>🔌 Custom Endpoint</option>
+            ${renderLlmProviderOptionsHtml(llmProv)}
           </select>
-          <input type="text" class="no-drag" style="font-size:10px;padding:3px 5px;" placeholder="Model (e.g. llama3.2, gemini-2.5-pro)" value="${escSvgXml(llmMod)}" oninput="updateNodeLlmField('${n.id}', 'llmModel', this.value, false)" onchange="updateNodeLlmField('${n.id}', 'llmModel', this.value, true)">
+          <input type="text" class="no-drag" style="font-size:10px;padding:3px 5px;" placeholder="Model (e.g. llama3.2, coding-agent)" value="${escSvgXml(llmMod)}" oninput="updateNodeLlmField('${n.id}', 'llmModel', this.value, false)" onchange="updateNodeLlmField('${n.id}', 'llmModel', this.value, true)">
         </div>
         <textarea class="no-drag" rows="3" style="font-size:10px;padding:4px 6px;background:rgba(0,0,0,0.36);color:#f3e8ff;border:1px solid rgba(168,85,247,0.35);border-radius:4px;" placeholder="Put the prompt or instructions here — wired input files + prompt get run -> output file comes out" oninput="updateNodeLlmField('${n.id}', 'llmPrompt', this.value, false)" onchange="updateNodeLlmField('${n.id}', 'llmPrompt', this.value, false)">${escSvgXml(llmPrmpt)}</textarea>
+        ${llmSecurityHtml}
         <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
           <button type="button" class="hdr-mini-btn no-drag" style="flex:1;padding:4px 8px;font-size:10.5px;font-weight:700;background:rgba(168,85,247,0.28);border:1px solid #c084fc;color:#f3e8ff;" onclick="runLlmQueryNode('${n.id}', event)">▶ Run Prompt + Input Files</button>
         </div>
-        ${n.lastLlmOutput ? `<div style="font-size:9.5px;color:#86efac;font-family:Consolas,monospace;background:rgba(0,0,0,0.32);padding:3px 6px;border-radius:4px;">✅ ${escSvgXml(n.lastLlmOutput)}</div>` : ''}
+        ${n.lastLlmOutput ? `<div style="font-size:9.5px;color:#86efac;font-family:Consolas,monospace;background:rgba(0,0,0,0.32);padding:3px 6px;border-radius:4px;white-space:pre-wrap;">✅ ${escSvgXml(n.lastLlmOutput)}</div>` : ''}
       </div>
     ` : '';
     const isTraceProc = Boolean(flowTracerState && flowTracerState.active && flowTracerState.activeNodeId === n.id && flowTracerState.phase === 'processing');
@@ -4812,9 +7414,15 @@ function renderAll(options = {}) {
         <div style="color:#a7f3d0;">➔ Emitting: <code>${escSvgXml(flowTracerState.activeOutputLabel || 'output.json')}</code></div>
       </div>
     ` : '';
-    const categoryBadge = n.category || (nodeType === 'idea' ? '💡 IDEA / TRIGGER' : (nodeType === 'llm_query' ? '🤖 LLM / AI QUERY' : (nodeType === 'external_in' ? '📥 EXTERNAL WORKFLOW IN' : (nodeType === 'external_out' ? '📤 EXTERNAL WORKFLOW OUT' : 'Processor'))));
+    const categoryBadge = n.category || (nodeType === 'idea' ? '💡 IDEA / TRIGGER' : (nodeType === 'gauge' ? '📊 GAUGE / LOGGER' : (nodeType === 'llm_query' ? '🤖 LLM / AI QUERY' : (nodeType === 'external_in' ? '📥 EXTERNAL WORKFLOW IN' : (nodeType === 'external_out' ? '📤 EXTERNAL WORKFLOW OUT' : 'Processor')))));
     const nodeTint = getItemColorInlineStyles(n, 'node');
     const nodeOverlayCls = getItemOverlayStateClasses(n.id);
+    const outPortControlsHtml = isGaugeNode ? '' : `
+          <span style="display:inline-flex;gap:3px;">
+            <button type="button" class="hdr-mini-btn no-drag" onclick="adjustNodePorts(event, '${n.id}', 'out', 1)" title="Add Output Port">+Out</button>
+            <button type="button" class="hdr-mini-btn no-drag" onclick="adjustNodePorts(event, '${n.id}', 'out', -1)" title="Remove Last Output Port">-Out</button>
+          </span>`;
+    const outPortsColHtml = isGaugeNode ? '' : `<div class="port-col">${outPortsHtml}</div>`;
     html += `
       <div class="wf-node node-type-${nodeType} ${sel} ${nodeOverlayCls}" data-item-id="${n.id}" data-node-type="${nodeType}" style="left:${n.x}px;top:${n.y}px;width:${n.w || 255}px;${n.userResized && n.h ? `min-height:${n.h}px;` : ''}display:flex;flex-direction:column;${nodeTint.cardStyle}" onmousedown="startDragItem(event, 'node', '${n.id}')">
         <div class="node-hdr" style="${nodeTint.hdrStyle}">
@@ -4829,19 +7437,18 @@ function renderAll(options = {}) {
             <button type="button" class="hdr-mini-btn no-drag" onclick="adjustNodePorts(event, '${n.id}', 'in', 1)" title="Add Input Port">+In</button>
             <button type="button" class="hdr-mini-btn no-drag" onclick="adjustNodePorts(event, '${n.id}', 'in', -1)" title="Remove Last Input Port">-In</button>
           </span>
-          <span style="display:inline-flex;gap:3px;">
-            <button type="button" class="hdr-mini-btn no-drag" onclick="adjustNodePorts(event, '${n.id}', 'out', 1)" title="Add Output Port">+Out</button>
-            <button type="button" class="hdr-mini-btn no-drag" onclick="adjustNodePorts(event, '${n.id}', 'out', -1)" title="Remove Last Output Port">-Out</button>
-          </span>
+          ${outPortControlsHtml}
         </div>
         <div class="node-ports">
           <div class="port-col">${inPortsHtml}</div>
-          <div class="port-col">${outPortsHtml}</div>
+          ${outPortsColHtml}
         </div>
         <div class="node-body" style="flex:1;">
           ${uiLinkHtml}
           ${docLinksHtml}
           ${nodePathButtonsHtml}
+          ${buildScriptSubnodeHtmlV190(n, S)}
+          ${gaugeCardPanelHtml}
           ${llmCardControlsHtml}
           ${ioSummaryHtml}
           ${substepsHtml}
@@ -4995,21 +7602,54 @@ function renderAll(options = {}) {
   (S.buses || []).forEach(bus => {
     if (findCollapsedParentContainer(bus)) return;
     const sel = selectedItem && selectedItem.id === bus.id ? 'selected' : '';
-    const inPortsHtml = (bus.inPorts || []).map(p => `
-      <div class="port-row port-row-stacked port-row-in"><span class="port-lbl-above">${p}</span>${renderPortDot(bus.id, p, 'in')}</div>
-    `).join('');
-    const outPortsHtml = (bus.outPorts || []).map(p => `
-      <div class="port-row port-row-stacked port-row-out"><span class="port-lbl-above">${p}</span>${renderPortDot(bus.id, p, 'out')}</div>
-    `).join('');
+    ensureHubInternalWiresV191(bus, S);
+    const hubRouting = evaluateHubRoutingV190(bus, S);
+    const isArmedPin = (k, i) => Boolean(armedHubInnerPin && armedHubInnerPin.hubId === bus.id && armedHubInnerPin.kind === k && Number(armedHubInnerPin.idx) === Number(i));
+    const inPortsList = Array.isArray(bus.inPorts) && bus.inPorts.length ? bus.inPorts : ['in_1'];
+    const outPortsList = Array.isArray(bus.outPorts) && bus.outPorts.length ? bus.outPorts : ['out_1'];
+    const inPortsHtml = (bus.inPorts || []).map((p, pIdx) => {
+      const dynLbl = resolveDynamicPortDisplayLabelV190(bus, p, 'in', S);
+      const armedCls = isArmedPin('in', pIdx) ? ' hub-inner-pin-armed' : '';
+      return `<div class="port-row port-row-stacked port-row-in"><span class="port-lbl-above" title="${escSvgXml(p)}">${escSvgXml(dynLbl)}</span><div class="hub-pin-pair hub-pin-pair-in">${renderPortDot(bus.id, p, 'in')}<span class="hub-inner-pin hub-inner-in no-drag${armedCls}" data-hub-id="${escSvgXml(bus.id)}" data-hub-pin-kind="in" data-port-idx="${pIdx}" data-port-name="${escSvgXml(p)}" title="Hub inner source pin (${escSvgXml(p)}) — click or drag inside this Hub" onmousedown="onHubInnerPinMouseDownV191(event, '${escSvgXml(bus.id)}', 'in', ${pIdx}, '${escSvgXml(p)}')" onmouseup="onHubInnerPinMouseUpV191(event, '${escSvgXml(bus.id)}', 'in', ${pIdx}, '${escSvgXml(p)}')" onclick="onHubInnerPinClickV191(event, '${escSvgXml(bus.id)}', 'in', ${pIdx}, '${escSvgXml(p)}')"></span></div></div>`;
+    }).join('');
+    const outPortsHtml = (bus.outPorts || []).map((p, pIdx) => {
+      const dynLbl = resolveDynamicPortDisplayLabelV190(bus, p, 'out', S);
+      const armedCls = isArmedPin('out', pIdx) ? ' hub-inner-pin-armed' : '';
+      return `<div class="port-row port-row-stacked port-row-out"><span class="port-lbl-above" title="${escSvgXml(p)}">${escSvgXml(dynLbl)}</span><div class="hub-pin-pair hub-pin-pair-out"><span class="hub-inner-pin hub-inner-out no-drag${armedCls}" data-hub-id="${escSvgXml(bus.id)}" data-hub-pin-kind="out" data-port-idx="${pIdx}" data-port-name="${escSvgXml(p)}" title="Hub inner target pin (${escSvgXml(p)}) — click or drag inside this Hub" onmousedown="onHubInnerPinMouseDownV191(event, '${escSvgXml(bus.id)}', 'out', ${pIdx}, '${escSvgXml(p)}')" onmouseup="onHubInnerPinMouseUpV191(event, '${escSvgXml(bus.id)}', 'out', ${pIdx}, '${escSvgXml(p)}')" onclick="onHubInnerPinClickV191(event, '${escSvgXml(bus.id)}', 'out', ${pIdx}, '${escSvgXml(p)}')"></span>${renderPortDot(bus.id, p, 'out')}</div></div>`;
+    }).join('');
     const busTint = getItemColorInlineStyles(bus, 'bus');
     const busOverlayCls = getItemOverlayStateClasses(bus.id);
+    const hubMode = bus.hubMode === 'combiner' ? 'combiner' : 'passthrough';
+    const hubScript = bus.combinerScript || (hubMode === 'combiner' ? 'combine_telemetry_manifest.py' : '');
+    const hubInternalSvgHtml = buildHubInternalSvgV190(bus, hubRouting);
+    const scriptInPinsHtml = inPortsList.map((sp, sIdx) => {
+      const sArmed = isArmedPin('script_in', sIdx) ? ' hub-inner-pin-armed' : '';
+      return `<span class="hub-inner-pin hub-inner-script-in no-drag${sArmed}" data-hub-id="${escSvgXml(bus.id)}" data-hub-pin-kind="script_in" data-port-idx="${sIdx}" data-port-name="${escSvgXml(sp)}" title="Combiner script input (${escSvgXml(sp)})" onmousedown="onHubInnerPinMouseDownV191(event, '${escSvgXml(bus.id)}', 'script_in', ${sIdx}, '${escSvgXml(sp)}')" onmouseup="onHubInnerPinMouseUpV191(event, '${escSvgXml(bus.id)}', 'script_in', ${sIdx}, '${escSvgXml(sp)}')" onclick="onHubInnerPinClickV191(event, '${escSvgXml(bus.id)}', 'script_in', ${sIdx}, '${escSvgXml(sp)}')"></span>`;
+    }).join('');
+    const scriptOutArmed = isArmedPin('script_out', 0) ? ' hub-inner-pin-armed' : '';
+    const scriptOutPinHtml = `<span class="hub-inner-pin hub-inner-script-out no-drag${scriptOutArmed}" data-hub-id="${escSvgXml(bus.id)}" data-hub-pin-kind="script_out" data-port-idx="0" data-port-name="combined_out" title="Combiner script output" onmousedown="onHubInnerPinMouseDownV191(event, '${escSvgXml(bus.id)}', 'script_out', 0, 'combined_out')" onmouseup="onHubInnerPinMouseUpV191(event, '${escSvgXml(bus.id)}', 'script_out', 0, 'combined_out')" onclick="onHubInnerPinClickV191(event, '${escSvgXml(bus.id)}', 'script_out', 0, 'combined_out')"></span>`;
+    const hubCombinerPillHtml = hubMode === 'combiner'
+      ? `<div class="hub-combiner-center-pill hub-combiner-script-box no-drag" data-hub-id="${escSvgXml(bus.id)}" title="${escSvgXml(hubScript)}" onmousedown="event.stopPropagation()"><span class="hub-script-in-pins">${scriptInPinsHtml}</span><span class="hub-combiner-script-lbl">🐍 ${escSvgXml(hubScript)}</span><span class="hub-script-out-pins">${scriptOutPinHtml}</span></div>`
+      : '';
+    const hubErrBannerHtml = !hubRouting.ok
+      ? `<div class="hub-routing-error-banner">${escSvgXml(hubRouting.reason)}</div>`
+      : '';
+    const hubModeStripHtml = hubMode === 'combiner'
+      ? `<div class="hub-mode-strip no-drag" style="background:rgba(168,85,247,0.14);border-top-color:rgba(168,85,247,0.34);">
+          <span style="display:inline-flex;align-items:center;gap:5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+            <span style="padding:1px 6px;border-radius:4px;background:rgba(168,85,247,0.28);border:1px solid #c084fc;color:#f3e8ff;font-weight:700;">📦 Combiner / Packager</span>
+            <code style="color:#e9d5ff;font-family:Consolas,monospace;">${escSvgXml(hubScript)}</code>
+          </span>
+          <button type="button" class="hdr-mini-btn no-drag" style="padding:1px 6px;font-size:9.5px;background:rgba(167,192,128,0.18);border:1px solid rgba(167,192,128,0.45);color:#a7c080;flex-shrink:0;" onclick="chooseScriptForHub('${bus.id}', event)" title="Choose combiner/packager script">🐍 Choose Script</button>
+        </div>`
+      : `<div class="hub-mode-strip no-drag" style="background:rgba(127,187,179,0.08);color:var(--aqua);font-size:9.5px;">🔀 Passthrough Organizer (${hubRouting.ok ? '1-to-1 / Fan-Out OK' : 'Fan-In Error'})</div>`;
     html += `
-      <div class="bus-bar-node ${sel} ${busOverlayCls}" data-item-id="${bus.id}" style="left:${bus.x}px;top:${bus.y}px;width:${bus.w || 250}px;${bus.h ? `min-height:${bus.h}px;` : ''}${busTint.cardStyle}" onmousedown="startDragItem(event, 'bus', '${bus.id}')">
+      <div class="bus-bar-node ${sel} ${busOverlayCls}" data-item-id="${bus.id}" data-hub-mode="${hubMode}" data-hub-ok="${hubRouting.ok ? '1' : '0'}" style="left:${bus.x}px;top:${bus.y}px;width:${bus.w || 265}px;${bus.h ? `min-height:${bus.h}px;` : ''}${busTint.cardStyle}${!hubRouting.ok ? ';border-color:#ef4444' : ''}" onmousedown="startDragItem(event, 'bus', '${bus.id}')">
         <div class="bus-hdr" style="${busTint.hdrStyle}">
           <span>${bus.title}</span>
           <span style="display:flex;gap:4px;align-items:center;">
             <small style="font-size:10px;color:var(--aqua);">${bus.orientation || 'left-right'}</small>
-            <button class="hdr-mini-btn no-drag" style="color:var(--red);" onclick="deleteItemById(event, 'bus', '${bus.id}')" title="Delete Bus Bar">🗑️</button>
+            <button class="hdr-mini-btn no-drag" style="color:var(--red);" onclick="deleteItemById(event, 'bus', '${bus.id}')" title="Delete Hub / Wire Organizer">🗑️</button>
           </span>
         </div>
         <div style="display:flex;gap:4px;padding:4px 8px;background:rgba(0,0,0,0.28);border-bottom:1px solid var(--border);">
@@ -5018,11 +7658,17 @@ function renderAll(options = {}) {
           <button class="hdr-mini-btn no-drag" onclick="adjustBusPorts(event, '${bus.id}', 'out', 1)">+Out</button>
           <button class="hdr-mini-btn no-drag" onclick="adjustBusPorts(event, '${bus.id}', 'out', -1)">-Out</button>
         </div>
-        <div class="node-ports">
-          <div class="port-col">${inPortsHtml}</div>
-          <div class="port-col">${outPortsHtml}</div>
+        <div class="hub-ports-stage">
+          ${hubInternalSvgHtml}
+          ${hubCombinerPillHtml}
+          <div class="node-ports">
+            <div class="port-col">${inPortsHtml}</div>
+            <div class="port-col">${outPortsHtml}</div>
+          </div>
         </div>
-        <div class="resize-handle" onmousedown="startResizeItem(event, 'bus', '${bus.id}')" title="Drag corner to resize bus bar"></div>
+        ${hubErrBannerHtml}
+        ${hubModeStripHtml}
+        <div class="resize-handle" onmousedown="startResizeItem(event, 'bus', '${bus.id}')" title="Drag corner to resize Hub / Wire Organizer"></div>
       </div>
     `;
   });
@@ -5156,6 +7802,10 @@ function findSelectedObject() {
   if (kind === 'bus') return (S.buses || []).find(x => x.id === id);
   if (kind === 'sticky') return (S.stickyNotes || []).find(x => x.id === id);
   if (kind === 'wire') return (S.wires || []).find(x => x.id === id);
+  if (kind === 'hub_wire') {
+    const h = (S.buses || []).find(x => x.id === selectedItem.hubId);
+    return (h && Array.isArray(h.hubInternalWires)) ? (h.hubInternalWires.find(w => w && w.id === id) || null) : null;
+  }
   return null;
 }
 
@@ -5186,7 +7836,7 @@ function renderInspector() {
   const obj = findSelectedObject();
   lastInspectedSelectionKey = selectedItem ? `${selectedItem.kind}:${selectedItem.id}` : '';
   if (!obj) {
-    el.innerHTML = `<div style="color:var(--fg1);">Click any Category, Subcategory, Cell, Node, Bus Bar, or File Container on the canvas to inspect or customize it.</div>`;
+    el.innerHTML = `<div style="color:var(--fg1);">Click any Category, Subcategory, Cell, Node, Gauge / Logger, Hub / Wire Organizer, or File Container on the canvas to inspect or customize it.</div>`;
     return;
   }
 
@@ -5194,11 +7844,7 @@ function renderInspector() {
   if (selectedItem.kind === 'node') {
     const nodeType = obj.type || 'step';
     const activeRules = Array.isArray(obj.rules) && obj.rules.length ? obj.rules : (obj.notes || []);
-    const activeSteps = Array.isArray(obj.steps) && obj.steps.length
-      ? obj.steps
-      : (Array.isArray(obj.bullets) && obj.bullets.length
-        ? obj.bullets
-        : (Array.isArray(obj.substeps) ? obj.substeps : []));
+    const activeSteps = extractWhatThisNodeDoesLines(obj);
     const rulesCardsHtml = activeRules.map((r) => `
       <div style="font-size:11px;line-height:1.4;color:var(--fg0);padding:5px 7px;background:rgba(0,0,0,0.32);border-left:3px solid var(--gold);border-radius:4px;">
         ${r}
@@ -5215,14 +7861,50 @@ function renderInspector() {
         <div style="font-weight:700;color:var(--gold);font-size:11px;">⚙️ Active Python Rules (in <code id="insp-script-code-readout">${obj.scriptBinding || 'bound_script.py'}</code>):</div>
         ${rulesCardsHtml || '<div style="color:var(--fg1);font-size:11px;">No rules defined yet.</div>'}
       </div>
+      ${renderNodeContractInspectorV190(obj, S)}
       <label>Node Type:</label>
       <select id="insp-node-type-select" onchange="updateSelectedNodeType(this.value)">
         <option value="step" ${nodeType === 'step' ? 'selected' : ''}>⚙️ Standard Processing Step (step)</option>
         <option value="llm_query" ${nodeType === 'llm_query' ? 'selected' : ''}>🤖 LLM / AI Query Node (llm_query)</option>
+        <option value="gauge" ${nodeType === 'gauge' ? 'selected' : ''}>📊 Gauge / Logger Sink (gauge)</option>
         <option value="idea" ${nodeType === 'idea' ? 'selected' : ''}>💡 Idea / Trigger Node — Output-Only (idea)</option>
         <option value="external_in" ${nodeType === 'external_in' ? 'selected' : ''}>📥 Upstream External Workflow (external_in)</option>
         <option value="external_out" ${nodeType === 'external_out' ? 'selected' : ''}>📤 Downstream External Workflow (external_out)</option>
       </select>
+      ${nodeType === 'gauge' ? `
+      <div style="display:flex;flex-direction:column;gap:6px;background:rgba(6,182,212,0.1);border:1px solid rgba(6,182,212,0.4);padding:8px;border-radius:6px;margin-top:2px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <strong style="color:#a5f3fc;font-size:11px;">📊 Gauge / Logger Sink Configuration</strong>
+          <span style="font-family:Consolas,monospace;font-size:10px;color:#67e8f9;">${escSvgXml(obj.gaugeDisplay || formatGaugeDisplay(obj))}</span>
+        </div>
+        <label style="font-size:10.5px;" for="insp-gauge-style-select">Visual Gauge Style (<code>gaugeStyle</code>):</label>
+        <select id="insp-gauge-style-select" onchange="updateGaugeField('${obj.id}', 'gaugeStyle', this.value)">
+          <option value="dial" ${(obj.gaugeStyle || 'dial') === 'dial' ? 'selected' : ''}>🎯 Radial Threshold Dial (dial)</option>
+          <option value="digital" ${obj.gaugeStyle === 'digital' ? 'selected' : ''}>🔢 Digital KPI + Delta (digital)</option>
+          <option value="timeseries" ${obj.gaugeStyle === 'timeseries' ? 'selected' : ''}>📈 Timeseries Sparkline (timeseries)</option>
+        </select>
+        <label style="font-size:10.5px;" for="insp-gauge-tap-var-select">Bound Upstream Variable (<code>tapVariable</code>):</label>
+        <select id="insp-gauge-tap-var-select" onchange="updateGaugeField('${obj.id}', 'tapVariable', this.value)">
+          ${getConnectedUpstreamTapVarsV190(obj, S).map(tv => `<option value="${escSvgXml(tv)}" ${obj.tapVariable === tv ? 'selected' : ''}>${escSvgXml(tv)}</option>`).join('') || '<option value="">(connect upstream wire)</option>'}
+        </select>
+        <label style="font-size:10.5px;" for="insp-gauge-mode-select">Gauge Mode (<code>gaugeMode</code>):</label>
+        <select id="insp-gauge-mode-select" onchange="updateGaugeMode('${obj.id}', this.value)">
+          <option value="run_counter" ${(obj.gaugeMode || 'run_counter') === 'run_counter' ? 'selected' : ''}>🔢 Run Counter (run_counter)</option>
+          <option value="pass_fail" ${obj.gaugeMode === 'pass_fail' ? 'selected' : ''}>✅ Pass / Fail Gate (pass_fail)</option>
+          <option value="event_log" ${obj.gaugeMode === 'event_log' ? 'selected' : ''}>📜 Event Log (event_log)</option>
+          <option value="custom_script" ${obj.gaugeMode === 'custom_script' ? 'selected' : ''}>🐍 Custom Metric Parser Script (custom_script)</option>
+        </select>
+        <label style="font-size:10.5px;" for="insp-gauge-status-input">Current Gauge Status (<code>gaugeStatus</code>):</label>
+        <input type="text" id="insp-gauge-status-input" value="${escSvgXml(obj.gaugeStatus || 'IDLE')}" oninput="updateGaugeField('${obj.id}', 'gaugeStatus', this.value)" onchange="updateGaugeField('${obj.id}', 'gaugeStatus', this.value)">
+        <div style="display:flex;gap:4px;flex-wrap:wrap;">
+          <button type="button" class="hdr-mini-btn" style="padding:3px 7px;background:rgba(6,182,212,0.22);border-color:#22d3ee;color:#cffafe;" onclick="triggerGaugeSampleTick('${obj.id}', event, 'PASS')">▶ +1 Record Run</button>
+          <button type="button" class="hdr-mini-btn" style="padding:3px 7px;background:rgba(16,185,129,0.2);border-color:#10b981;color:#a7f3d0;" onclick="triggerGaugeSampleTick('${obj.id}', event, 'PASS')">✅ Mark PASS</button>
+          <button type="button" class="hdr-mini-btn" style="padding:3px 7px;background:rgba(239,68,68,0.2);border-color:#f87171;color:#fecaca;" onclick="triggerGaugeSampleTick('${obj.id}', event, 'FAIL')">❌ Mark FAIL</button>
+          <button type="button" class="hdr-mini-btn" style="padding:3px 7px;" onclick="resetGaugeNode('${obj.id}', event)">↺ Reset</button>
+        </div>
+        <div style="font-size:10px;color:#cbd5e1;font-family:Consolas,monospace;">Parser Script: <code>${escSvgXml(obj.scriptBinding || (obj.gaugeMode === 'custom_script' ? 'STUB_metric_parser.py' : 'built-in sink'))}</code></div>
+        <div style="font-size:10px;color:#94a3b8;">Recent Logs (${(obj.gaugeLogs || []).length}): ${(obj.gaugeLogs || []).slice(-3).map(x => escSvgXml(x)).join(' | ') || 'none'}</div>
+      </div>` : ''}
       <div style="display:flex;flex-direction:column;gap:6px;background:rgba(168,85,247,0.1);border:1px solid rgba(168,85,247,0.38);padding:8px;border-radius:6px;margin-top:2px;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <strong style="color:#d8b4fe;font-size:11px;">🤖 LLM / AI Query Configuration</strong>
@@ -5230,17 +7912,15 @@ function renderInspector() {
         </div>
         <label style="font-size:10.5px;">Provider / Execution Mode (<code>llmProvider</code>):</label>
         <select id="insp-llm-provider-select" onchange="updateNodeLlmField('${obj.id}', 'llmProvider', this.value, true)">
-          <option value="ollama" ${(obj.llmProvider || (obj.llmConfig && obj.llmConfig.provider) || 'ollama') === 'ollama' ? 'selected' : ''}>🦙 Local Ollama (${OLLAMA_LOCAL_BASE_URL})</option>
-          <option value="gemini" ${(obj.llmProvider || (obj.llmConfig && obj.llmConfig.provider)) === 'gemini' ? 'selected' : ''}>✨ Gemini API (gemini-2.5-pro / gemini-2.5-flash)</option>
-          <option value="openai" ${(obj.llmProvider || (obj.llmConfig && obj.llmConfig.provider)) === 'openai' ? 'selected' : ''}>🤖 OpenAI / Custom API Endpoint</option>
-          <option value="custom" ${(obj.llmProvider || (obj.llmConfig && obj.llmConfig.provider)) === 'custom' ? 'selected' : ''}>🔌 Custom Endpoint</option>
+          ${renderLlmProviderOptionsHtml(obj.llmProvider || (obj.llmConfig && obj.llmConfig.provider) || 'ollama')}
         </select>
-        <label style="font-size:10.5px;">Model Name (<code>llmModel</code>, e.g. <code>llama3.2</code>, <code>qwen2.5-coder</code>, <code>deepseek-r1</code>, <code>gemini-2.5-pro</code>):</label>
+        <label style="font-size:10.5px;">Model Name (<code>llmModel</code>, e.g. <code>llama3.2</code>, <code>coding-agent</code>, <code>gemini-2.5-pro</code>):</label>
         <input type="text" id="insp-llm-model-input" value="${escSvgXml(obj.llmModel || (obj.llmConfig && obj.llmConfig.model) || 'llama3.2')}" oninput="updateNodeLlmField('${obj.id}', 'llmModel', this.value, false)" onchange="updateNodeLlmField('${obj.id}', 'llmModel', this.value, true)">
-        <label style="font-size:10.5px;">🔑 Optional API Key (stored in browser <code>localStorage</code> ONLY — never saved to workflow JSON!):</label>
+        <label style="font-size:10.5px;">🔑 Optional Browser Key (stored strictly in browser <code>localStorage</code> — scrubbed on JSON/HTML export):</label>
         <input type="password" id="insp-llm-apikey-input" placeholder="Stored locally in browser only" value="${escSvgXml(getLlmApiKeyFromLocalStorage(obj.llmProvider || 'ollama'))}" onchange="setLlmApiKeyInLocalStorage(obj.llmProvider || 'ollama', this.value)">
         <label style="font-size:10.5px;">📝 Prompt / Instructions (<code>llmPrompt</code>):</label>
         <textarea id="insp-llm-prompt-input" rows="3" placeholder="Put the prompt or instructions here — wired input files + prompt get run -> output file comes out" oninput="updateNodeLlmField('${obj.id}', 'llmPrompt', this.value, false)" onchange="updateNodeLlmField('${obj.id}', 'llmPrompt', this.value, true)">${escSvgXml(obj.llmPrompt || (obj.llmConfig && obj.llmConfig.prompt) || '')}</textarea>
+        ${renderLlmSecurityStripHtml(obj, collectUpstreamFilesForNode(obj.id))}
       </div>
       <label>Category Badge:</label>
       <input type="text" id="insp-category-input" value="${obj.category || ''}" oninput="updateSelectedField('category', this.value)" onchange="updateSelectedField('category', this.value)">
@@ -5256,6 +7936,7 @@ function renderInspector() {
         </span>
       </div>
       <input type="text" id="insp-in-ports-input" value="${(obj.inPorts || []).join(', ')}" placeholder="in_1, in_2" oninput="updateSelectedPorts('inPorts', this.value)" onchange="updateSelectedPorts('inPorts', this.value)">
+      ${nodeType === 'gauge' ? '' : `
       <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
         <label style="margin:0;">📤 Output Port Names (comma-separated):</label>
         <span style="display:inline-flex;gap:4px;">
@@ -5263,9 +7944,9 @@ function renderInspector() {
           <button type="button" id="insp-btn-rem-out-port" class="hdr-mini-btn" onclick="adjustNodePorts(event, '${obj.id}', 'out', -1)" title="Remove Last Output Port">-Output</button>
         </span>
       </div>
-      <input type="text" id="insp-out-ports-input" value="${(obj.outPorts || []).join(', ')}" placeholder="out_1, out_2" oninput="updateSelectedPorts('outPorts', this.value)" onchange="updateSelectedPorts('outPorts', this.value)">
-      <label>🔧 Bulleted "What You Do in This UI" Steps (one per line):</label>
-      <textarea id="insp-steps-input" rows="4" oninput="updateSelectedSteps(this.value)" onchange="updateSelectedSteps(this.value)">${activeSteps.join('\n')}</textarea>
+      <input type="text" id="insp-out-ports-input" value="${(obj.outPorts || []).join(', ')}" placeholder="out_1, out_2" oninput="updateSelectedPorts('outPorts', this.value)" onchange="updateSelectedPorts('outPorts', this.value)">`}
+      <label for="insp-steps-input">📝 What This Node Is / Does (one note per line):</label>
+      <textarea id="insp-steps-input" rows="4" placeholder="Plain-English note explaining what happens when this node runs, passes data through, is inspected, or gates a step" oninput="updateSelectedSteps(this.value)" onchange="updateSelectedSteps(this.value)">${activeSteps.join('\n')}</textarea>
       <label>Script / Code Binding:</label>
       <div style="display:flex;gap:4px;">
         <input type="text" id="insp-script-input" style="flex:1;" value="${obj.scriptBinding || ''}" oninput="updateSelectedField('scriptBinding', this.value)" onchange="updateSelectedField('scriptBinding', this.value)">
@@ -5317,13 +7998,31 @@ function renderInspector() {
       <input type="text" id="insp-in-ports-input" value="${(obj.inPorts || []).join(', ')}" oninput="updateSelectedPorts('inPorts', this.value)" onchange="updateSelectedPorts('inPorts', this.value)">
       <label>Right Output Ports (comma-separated):</label>
       <input type="text" id="insp-out-ports-input" value="${(obj.outPorts || []).join(', ')}" oninput="updateSelectedPorts('outPorts', this.value)" onchange="updateSelectedPorts('outPorts', this.value)">
-      <label>Bottom Subsystem Ports (comma-separated):</label>
-      <input type="text" id="insp-bottom-ports-input" value="${(obj.bottomPorts || []).join(', ')}" oninput="updateSelectedPorts('bottomPorts', this.value)" onchange="updateSelectedPorts('bottomPorts', this.value)">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;">
+        <label for="insp-bottom-ports-input" style="margin:0;">📊 Measurement / Log Tap (Optional — leave blank to hide):</label>
+        <span style="display:inline-flex;gap:4px;">
+          <button type="button" id="insp-btn-add-bottom-tap" class="hdr-mini-btn" onclick="addContainerMeasurementTap('${obj.id}')" title="Add a bottom Measurement / Log Tap port">+ Add Measurement Tap</button>
+          <button type="button" id="insp-btn-clear-bottom-taps" class="hdr-mini-btn" onclick="clearContainerMeasurementTaps('${obj.id}')" title="Clear all bottom taps">Clear Taps</button>
+        </span>
+      </div>
+      <input type="text" id="insp-bottom-ports-input" placeholder="e.g. metrics_tap, audit_log (blank = hidden)" value="${(obj.bottomPorts || []).join(', ')}" oninput="updateSelectedPorts('bottomPorts', this.value)" onchange="updateSelectedPorts('bottomPorts', this.value)">
       <label>Notes (one per line):</label>
       <textarea id="insp-notes-input" rows="4" oninput="updateSelectedNotes(this.value)" onchange="updateSelectedNotes(this.value)">${(obj.notes || obj.checklist || []).join('\n')}</textarea>
     `;
   } else if (selectedItem.kind === 'bus') {
+    const hubModeVal = obj.hubMode === 'combiner' ? 'combiner' : 'passthrough';
+    const combinerScriptVal = obj.combinerScript || (hubModeVal === 'combiner' ? 'STUB_concatenator.py' : '');
     extra = `
+      <label for="insp-hub-mode-select">Hub / Wire Organizer Mode (<code>hubMode</code>):</label>
+      <select id="insp-hub-mode-select" onchange="updateHubMode('${obj.id}', this.value)">
+        <option value="passthrough" ${hubModeVal === 'passthrough' ? 'selected' : ''}>🔀 Passthrough Organizer (1-to-1 routed streams)</option>
+        <option value="combiner" ${hubModeVal === 'combiner' ? 'selected' : ''}>📦 Combiner / Packager (merges inputs via script)</option>
+      </select>
+      <label for="insp-hub-combiner-script">Combiner / Packager Script (<code>combinerScript</code>):</label>
+      <div style="display:flex;gap:4px;">
+        <input type="text" id="insp-hub-combiner-script" style="flex:1;" placeholder="STUB_concatenator.py" value="${escSvgXml(combinerScriptVal)}" oninput="updateHubCombinerScript('${obj.id}', this.value)" onchange="updateHubCombinerScript('${obj.id}', this.value)">
+        <button type="button" class="hdr-mini-btn" onclick="chooseScriptForHub('${obj.id}', event)" style="padding:4px 8px;font-size:10px;background:rgba(167,192,128,0.2);border-color:rgba(167,192,128,0.5);color:#a7c080;">🐍 Choose Script</button>
+      </div>
       <label>Port Location / Orientation:</label>
       <select onchange="updateBusOrientation(this.value)">
         <option value="left-right" ${obj.orientation === 'left-right' ? 'selected' : ''}>Left → Right (Default)</option>
@@ -5335,6 +8034,10 @@ function renderInspector() {
       <input type="text" id="insp-in-ports-input" value="${(obj.inPorts || []).join(', ')}" oninput="updateSelectedPorts('inPorts', this.value)" onchange="updateSelectedPorts('inPorts', this.value)">
       <label>Output Ports (comma-separated):</label>
       <input type="text" id="insp-out-ports-input" value="${(obj.outPorts || []).join(', ')}" oninput="updateSelectedPorts('outPorts', this.value)" onchange="updateSelectedPorts('outPorts', this.value)">
+      <div style="display:flex;flex-direction:column;gap:4px;background:rgba(127,187,179,0.08);border:1px solid rgba(127,187,179,0.28);padding:7px;border-radius:6px;margin-top:4px;">
+        <strong style="font-size:10.5px;color:var(--aqua);">🧵 Hub Internal Strands (${ensureHubInternalWiresV191(obj, S).length})</strong>
+        ${ensureHubInternalWiresV191(obj, S).map(hw => `<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;padding:3px 6px;background:rgba(0,0,0,0.28);border-radius:4px;font-family:Consolas,monospace;font-size:10px;"><span>${escSvgXml(hw.fromKind)}[${hw.fromIdx}] → ${escSvgXml(hw.toKind)}[${hw.toIdx}]</span><button type="button" class="hdr-mini-btn" style="color:var(--red);" onclick="deleteHubInnerWireAndRenderV191('${obj.id}', '${escSvgXml(hw.id)}', event)" title="Delete internal strand">🗑️</button></div>`).join('') || '<div style="font-size:10px;color:var(--fg1);">No internal strands. Click or drag between inner Hub pins.</div>'}
+      </div>
       <label>Notes (one per line):</label>
       <textarea id="insp-notes-input" rows="3" oninput="updateSelectedNotes(this.value)" onchange="updateSelectedNotes(this.value)">${(obj.notes || []).join('\n')}</textarea>
     `;
@@ -5375,14 +8078,43 @@ function renderInspector() {
   ` : '';
 
   const colorSectionHtml = renderInspectorColorSectionHtml(selectedItem.kind, obj);
+  if (selectedItem.kind === 'hub_wire') {
+    el.innerHTML = `
+      <div style="font-family:Consolas,monospace;font-size:11px;color:var(--aqua);">ID: ${escSvgXml(obj.id || selectedItem.id)} (Hub internal strand)</div>
+      <div style="padding:7px 9px;background:rgba(127,187,179,0.1);border:1px solid rgba(127,187,179,0.34);border-radius:6px;font-family:Consolas,monospace;font-size:11px;">
+        <div><strong style="color:var(--gold);">Hub:</strong> ${escSvgXml(selectedItem.hubId || '')}</div>
+        <div><strong style="color:var(--accent);">From:</strong> ${escSvgXml(obj.fromKind || '')}[${Number(obj.fromIdx) || 0}]</div>
+        <div><strong style="color:var(--gold);">To:</strong> ${escSvgXml(obj.toKind || '')}[${Number(obj.toIdx) || 0}]</div>
+      </div>
+      <button id="insp-btn-delete-hub-wire" style="background:#8c2d2d;border-color:#ff7a7a;color:#fff;margin-top:6px;" onclick="deleteHubInnerWireAndRenderV191('${escSvgXml(selectedItem.hubId || '')}', '${escSvgXml(obj.id || selectedItem.id)}', event)">🗑️ Delete Internal Strand [Del]</button>
+    `;
+    return;
+  }
   if (selectedItem.kind === 'wire') {
     const canDelWire = Boolean(S && S.wireDeleteMode);
+    const wKind = obj.wireKind === 'semantic' ? 'semantic' : 'data';
+    const wVerb = obj.relationshipVerb || obj.label || 'GATES';
+    const wEval = evaluateWireContractV190(obj, S);
+    const contractBoxHtml = wKind === 'semantic'
+      ? `<div style="padding:6px 8px;border-radius:6px;background:rgba(219,188,127,0.12);border:1px solid rgba(219,188,127,0.45);color:#fde68a;font-size:10.5px;">🔗 Semantic Edge (<code>${escSvgXml(wVerb)}</code>) — bypasses payload schema validation</div>`
+      : `<div style="padding:6px 8px;border-radius:6px;background:${wEval.ok ? 'rgba(167,192,128,0.14)' : 'rgba(239,68,68,0.22)'};border:1px solid ${wEval.ok ? 'rgba(167,192,128,0.45)' : '#ef4444'};font-family:Consolas,monospace;font-size:10px;"><div><strong>Status:</strong> ${wEval.ok ? '🟢 Valid' : '🔴 ' + escSvgXml(wEval.reason)}</div><div><strong>Carrier:</strong> ${escSvgXml(wEval.carrier)}</div><div><strong>Upstream Vars:</strong> ${escSvgXml((wEval.upstreamVars || []).join(', ') || 'none')}</div><div><strong>Required Vars:</strong> ${escSvgXml((wEval.requiredVars || []).join(', ') || 'any')}</div>${wEval.appliedAliases && wEval.appliedAliases.length ? `<div><strong>Aliases:</strong> ${escSvgXml(wEval.appliedAliases.join(', '))}</div>` : ''}${wEval.missingVars && wEval.missingVars.length ? `<div style="color:#fecaca;"><strong>Missing:</strong> ${escSvgXml(wEval.missingVars.join(', '))}</div>` : ''}</div>`;
     el.innerHTML = `
       <div style="font-family:Consolas,monospace;font-size:11px;color:var(--aqua);">ID: ${obj.id} (wire connector)</div>
       <div style="padding:7px 9px;background:rgba(56,189,248,0.08);border:1px solid rgba(56,189,248,0.28);border-radius:6px;font-family:Consolas,monospace;font-size:11px;">
         <div><strong style="color:var(--accent);">From:</strong> ${escSvgXml(obj.fromNode || '')}.${escSvgXml(obj.fromPort || '')}</div>
         <div><strong style="color:var(--gold);">To:</strong> ${escSvgXml(obj.toNode || '')}.${escSvgXml(obj.toPort || '')}</div>
       </div>
+      <label for="insp-wire-kind-select">Connector Kind (<code>wireKind</code>):</label>
+      <select id="insp-wire-kind-select" onchange="updateWireKindV190('${obj.id}', this.value)">
+        <option value="data" ${wKind === 'data' ? 'selected' : ''}>📦 Data Payload Wire (data)</option>
+        <option value="semantic" ${wKind === 'semantic' ? 'selected' : ''}>🔗 Semantic / Relationship Edge (semantic)</option>
+      </select>
+      ${wKind === 'semantic' ? `
+      <label for="insp-wire-verb-select">Relationship Verb (<code>relationshipVerb</code>):</label>
+      <select id="insp-wire-verb-select" onchange="updateWireRelationshipVerbV190('${obj.id}', this.value)">
+        ${V19_SEMANTIC_VERBS.map(v => `<option value="${v}" ${wVerb === v ? 'selected' : ''}>🔗 ${v}</option>`).join('')}
+      </select>` : ''}
+      ${contractBoxHtml}
       <label>Connector Label (optional):</label>
       <input type="text" id="insp-wire-label-input" value="${escSvgXml(obj.label || '')}" oninput="updateSelectedField('label', this.value)" onchange="updateSelectedField('label', this.value)">
       ${colorSectionHtml}
@@ -5760,8 +8492,8 @@ async function chooseScriptForNode(nodeId, ev = null) {
     }
   }
   const enteredScript = (typeof prompt === 'function')
-    ? prompt('Enter Python / JS script path to bind to this node:', node.scriptBinding || 'modules/process_step.py')
-    : (node.scriptBinding || 'modules/process_step.py');
+    ? prompt('Enter Python / JS script path to bind to this node:', node.scriptBinding || 'STUB_process_step.py')
+    : (node.scriptBinding || 'STUB_process_step.py');
   if (!enteredScript) return { ok: false, cancelled: true };
   enterConstructionMode('connect script path');
   node.scriptBinding = enteredScript.trim();
@@ -5828,6 +8560,22 @@ function updateSelectedNodeType(nextType) {
   obj.type = nextType || 'step';
   if (obj.type === 'idea') {
     obj.category = '💡 IDEA / TRIGGER';
+  } else if (obj.type === 'gauge') {
+    obj.category = '📊 GAUGE / LOGGER';
+    const prevOut = Array.isArray(obj.outPorts) ? obj.outPorts.slice() : [];
+    syncWiresOnPortListChange(obj, 'outPorts', prevOut, []);
+    if (!Array.isArray(obj.inPorts) || obj.inPorts.length === 0) obj.inPorts = ['tap_in'];
+    obj.inputs = obj.inPorts;
+    obj.outPorts = [];
+    obj.outputs = [];
+    if (!obj.gaugeMode) obj.gaugeMode = 'run_counter';
+    if (typeof obj.gaugeCount !== 'number') obj.gaugeCount = 0;
+    if (!obj.gaugeStatus) obj.gaugeStatus = 'IDLE';
+    if (!Array.isArray(obj.gaugeLogs)) obj.gaugeLogs = [];
+    if (obj.gaugeMode === 'custom_script' && (!obj.scriptBinding || obj.scriptBinding === 'STUB_process_step.py')) {
+      obj.scriptBinding = 'STUB_metric_parser.py';
+    }
+    obj.gaugeDisplay = formatGaugeDisplay(obj);
   } else if (obj.type === 'llm_query') {
     obj.category = '🤖 LLM / AI QUERY';
     if (!Array.isArray(obj.inPorts) || obj.inPorts.length === 0) obj.inPorts = ['files_in', 'context_in'];
@@ -5847,14 +8595,17 @@ function updateSelectedNodeType(nextType) {
 function updateSelectedSteps(val) {
   const obj = findSelectedObject();
   if (!obj) return;
-  enterConstructionMode('edit steps', false);
+  enterConstructionMode('edit what this node does', false);
   const lines = String(val || '').split('\n').map(s => s.trim()).filter(Boolean);
   obj.steps = lines;
   obj.substeps = lines;
+  obj.whatThisNodeDoes = lines.slice();
   resetAutoFitOnItemAndParents(obj);
   autoSaveWorkflowState('inspector_steps');
   renderAll({ preserveInspector: true });
 }
+window.updateSelectedSteps = updateSelectedSteps;
+window.updateWhatThisNodeDoes = updateSelectedSteps;
 
 function resetAutoFitOnItemAndParents(obj) {
   if (!obj) return;
@@ -5899,8 +8650,8 @@ function syncWiresOnPortListChange(obj, field, prevPorts, nextPorts) {
     let keep = true;
     const isFromThis = w.fromNode === obj.id;
     const isToThis = w.toNode === obj.id;
-    const fDir = isFromThis ? (w.fromDir || (targetDir === 'in' && oldList.includes(w.fromPort) ? 'in' : 'out')) : '';
-    const tDir = isToThis ? (w.toDir || (targetDir === 'out' && oldList.includes(w.toPort) ? 'out' : 'in')) : '';
+    const fDir = isFromThis ? (w.fromDir || (targetDir === 'bottom' && oldList.includes(w.fromPort) ? 'bottom' : (targetDir === 'in' && oldList.includes(w.fromPort) ? 'in' : 'out'))) : '';
+    const tDir = isToThis ? (w.toDir || (targetDir === 'bottom' && oldList.includes(w.toPort) ? 'bottom' : (targetDir === 'out' && oldList.includes(w.toPort) ? 'out' : 'in'))) : '';
     if (isFromThis && (fDir === targetDir || (targetDir === 'out' && !w.fromDir && oldList.includes(w.fromPort)))) {
       if (renameMap[w.fromPort]) {
         w.fromPort = renameMap[w.fromPort];
@@ -5940,6 +8691,11 @@ function adjustNodePorts(ev, nodeId, side, delta) {
   enterConstructionMode('adjust node ports', false);
   const node = (S.nodes || []).find(n => n.id === nodeId) || findAnyItemById(nodeId);
   if (!node) return null;
+  if (node.type === 'gauge' && side === 'out') {
+    node.outPorts = [];
+    node.outputs = [];
+    return node;
+  }
   const field = side === 'out' ? 'outPorts' : 'inPorts';
   const prevPorts = Array.isArray(node[field]) ? node[field].slice() : [];
   const nextPorts = prevPorts.slice();
@@ -6010,7 +8766,7 @@ function updateBusOrientation(val) {
   if (!obj) return;
   enterConstructionMode('bus orientation', false);
   obj.orientation = val;
-  setStatus(`⚡ Bus Bar orientation set to ${val}`);
+  setStatus(`🔀 Hub / Wire Organizer orientation set to ${val}`);
   renderAll();
 }
 
@@ -6025,6 +8781,17 @@ function adjustBusPorts(ev, busId, side, delta) {
     arr.push(`${prefix}${arr.length + 1}`);
   } else if (arr.length > 1) {
     arr.pop();
+  }
+  if (Array.isArray(bus.hubInternalWires)) {
+    const maxIn = Math.max(0, (bus.inPorts || []).length - 1);
+    const maxOut = Math.max(0, (bus.outPorts || []).length - 1);
+    bus.hubInternalWires = bus.hubInternalWires.filter(hw => {
+      if (!hw) return false;
+      if ((hw.fromKind === 'in' || hw.fromKind === 'script_in') && Number(hw.fromIdx) > maxIn) return false;
+      if ((hw.toKind === 'in' || hw.toKind === 'script_in') && Number(hw.toIdx) > maxIn) return false;
+      if (hw.toKind === 'out' && Number(hw.toIdx) > maxOut) return false;
+      return true;
+    });
   }
   resetAutoFitOnItemAndParents(bus);
   renderAll();
@@ -6090,6 +8857,10 @@ function deleteItemById(ev, kind, id) {
 function deleteSelectedElement() {
   if (!selectedItem) return;
   const { kind, id } = selectedItem;
+  if (kind === 'hub_wire') {
+    deleteHubInnerWireAndRenderV191(selectedItem.hubId, id);
+    return;
+  }
   if (kind === 'wire') {
     if (!(S && S.wireDeleteMode)) {
       setStatus('🛡️ Connector deletion locked — enable Del Wires toggle to delete wires');
@@ -6286,7 +9057,7 @@ function startDragItem(ev, kind, id) {
     };
     return;
   }
-  if (ev.target && ev.target.closest && ev.target.closest('.port-dot, .resize-handle, .no-drag, button, input, select, textarea')) {
+  if (ev.target && ev.target.closest && ev.target.closest('.port-dot, .hub-inner-pin, .hub-inner-wire-hit, .resize-handle, .no-drag, button, input, select, textarea')) {
     return;
   }
   ev.stopPropagation();
@@ -6399,6 +9170,13 @@ function connectPortPair(portA, portB) {
 
 function onPortMouseDown(ev, nodeId, portName, dir) {
   ev.stopPropagation();
+  if (armedHubInnerPin || draggingHubInnerPin) {
+    armedHubInnerPin = null;
+    draggingHubInnerPin = null;
+    setStatus('🔒 Hub internal strands must connect ports inside the same Hub');
+    renderAll({ preserveInspector: true });
+    return;
+  }
   connectingPort = { nodeId, portName, dir };
   portDragStartPos = { x: ev.clientX, y: ev.clientY };
   setStatus(`🔌 Port ${nodeId} [${portName}] — drag to another port OR click-then-click second port ●`);
@@ -6410,6 +9188,15 @@ function startPortConnect(ev, nodeId, portName, dir) {
 
 function onPortClick(ev, nodeId, portName, dir) {
   ev.stopPropagation();
+  if (armedHubInnerPin || draggingHubInnerPin) {
+    armedHubInnerPin = null;
+    draggingHubInnerPin = null;
+    armedPort = null;
+    connectingPort = null;
+    setStatus('🔒 Hub internal strands must connect ports inside the same Hub');
+    renderAll({ preserveInspector: true });
+    return;
+  }
   if (!armedPort) {
     armedPort = { nodeId, portName, dir };
     setStatus(`🎯 Armed port ${nodeId} [${portName}] (pulsing) — click any 2nd port dot to connect!`);
@@ -6448,6 +9235,8 @@ function deselectAll() {
   selectedItem = null;
   armedPort = null;
   connectingPort = null;
+  armedHubInnerPin = null;
+  draggingHubInnerPin = null;
   const ctxEl = document.getElementById('ctxMenu');
   if (ctxEl) ctxEl.style.display = 'none';
   const popEl = document.getElementById('hotkeyHelpPopover');
@@ -6518,7 +9307,7 @@ function buildGithubIssuePayload() {
     rawDetails,
     '',
     '### Environment',
-    '- **Engine**: SandboxWorkflow v1.8.1',
+    '- **Engine**: SandboxWorkflow v1.9.1',
     '- **Note**: Privacy-safe submission (no workflow JSON or local paths included)'
   ].join('\n');
   const baseUrl = ['ht', 'tps://github.com/pzetts/SandboxWorkflow/issues/new'].join('');
@@ -6730,6 +9519,15 @@ window.addEventListener('mousemove', (ev) => {
   lastTouchpadCursorX = ev.clientX;
   lastTouchpadCursorY = ev.clientY;
 
+  if (draggingHubInnerPin) {
+    if (Math.hypot(ev.clientX - draggingHubInnerPin.startX, ev.clientY - draggingHubInnerPin.startY) > 4) {
+      draggingHubInnerPin.moved = true;
+    }
+    draggingHubInnerPin.curX = ev.clientX;
+    draggingHubInnerPin.curY = ev.clientY;
+    if (draggingHubInnerPin.moved) updateHubInnerDragPreviewV191(ev.clientX, ev.clientY);
+    return;
+  }
   // Clickless Touchpad Ctrl-Pan & Alt-Zoom (no mouse click required)
   if (!activeDrag) {
     if ((ev.ctrlKey || isCtrlKeyHeld) && !(ev.altKey || isAltKeyHeld)) {
@@ -6847,6 +9645,20 @@ window.addEventListener('mouseup', (ev) => {
       }
     }
   }
+  if (draggingHubInnerPin) {
+    const wasMoved = Boolean(draggingHubInnerPin.moved);
+    const srcHubId = draggingHubInnerPin.hubId;
+    draggingHubInnerPin = null;
+    if (wasMoved) {
+      const hitPin = ev && ev.target && ev.target.closest ? ev.target.closest('.hub-inner-pin') : null;
+      const hitHubId = hitPin && hitPin.getAttribute ? hitPin.getAttribute('data-hub-id') : '';
+      const hitOuter = ev && ev.target && ev.target.closest ? ev.target.closest('.port-dot, .bus-bar-node') : null;
+      if ((hitPin && hitHubId !== srcHubId) || (!hitPin && hitOuter)) {
+        setStatus('🔒 Hub internal strands must connect ports inside the same Hub');
+      }
+      renderAll({ preserveInspector: true });
+    }
+  }
   activeDrag = null;
   connectingPort = null;
   if (wasMoveOrResize) {
@@ -6903,6 +9715,7 @@ function ctxSpawn(kind) {
   if (kind === 'cell') spawnCellSlot(x, y);
   if (kind === 'node') spawnAlgorithmNode(x, y);
   if (kind === 'llm_query') spawnLlmQueryNode(x, y);
+  if (kind === 'gauge') spawnGaugeNode(x, y);
   if (kind === 'bucket') spawnFileContainer(x, y);
   if (kind === 'bus') spawnBusNode(x, y);
 }
@@ -6924,7 +9737,10 @@ window.addEventListener('keydown', (ev) => {
     if (S.fullScreenView) S.fullScreenView = false;
     resetInteractionModes();
     toggleHoneycombPopover(null, false);
+    armedHubInnerPin = null;
+    draggingHubInnerPin = null;
     toggleGithubFeedbackPopover(null, false);
+    if (typeof toggleV19ReviewPopover === 'function') toggleV19ReviewPopover(null, false);
     closeFullSpectrumColorModal();
     deselectAll();
     return;
@@ -7203,8 +10019,14 @@ function completeCurrentTraceHopAndAdvance(shouldRender = true) {
   flowTracerState.completedNodeIds.add(hop.fromId);
   flowTracerState.completedNodeIds.add(hop.toId);
   const bucketUpdate = commitTraceHopOutputToBucket(hop);
+  let gaugeUpdate = null;
+  if (hop.toObj && hop.toObj.type === 'gauge') {
+    gaugeUpdate = recordGaugeObservation(hop.toObj, `${hop.fromTitle}: ${hop.inputFile}`, 'PASS');
+  }
   if (bucketUpdate) {
     setStatus(`📦 Hop ${hop.index + 1}/${hops.length}: "${hop.toTitle}" populated [${bucketUpdate.fileName}]`);
+  } else if (gaugeUpdate) {
+    setStatus(`📊 Hop ${hop.index + 1}/${hops.length}: Gauge "${hop.toTitle}" recorded (${gaugeUpdate.gaugeDisplay})`);
   } else {
     setStatus(`✅ Hop ${hop.index + 1}/${hops.length}: ${hop.fromTitle} ➔ ${hop.toTitle} emitted [${hop.outputFile}]`);
   }
@@ -7525,11 +10347,22 @@ function openPrintableSchematicSvgSheet() {
 }
 window.openPrintableSchematicSvgSheet = openPrintableSchematicSvgSheet;
 
-window.WORKFLOW_PRESETS = window.WORKFLOW_PRESETS || {
-  get example() { return createExampleWorkflowState(); },
-  get hello_world() { return createHelloWorldWorkflowState(); },
-  get algorithm() { return createAlgorithmWorkflowState(); }
-};
+window.WORKFLOW_PRESETS = window.WORKFLOW_PRESETS || {};
+[
+  ['v191_telemetry_pipeline', createV191TelemetryPipelineState],
+  ['v190_telemetry_pipeline', createV190TelemetryPipelineState],
+  ['example', createExampleWorkflowState],
+  ['hello_world', createHelloWorldWorkflowState],
+  ['algorithm', createAlgorithmWorkflowState],
+].forEach(([k, factoryFn]) => {
+  if (!(k in window.WORKFLOW_PRESETS)) {
+    Object.defineProperty(window.WORKFLOW_PRESETS, k, {
+      get: factoryFn,
+      enumerable: true,
+      configurable: true,
+    });
+  }
+});
 
 function healBrokenNodeUiUrls(stateObj, _factoryStateObj) {
   return stateObj;
@@ -8069,7 +10902,11 @@ function loadPresetTemplate(presetKey, forceFactory = false) {
     return;
   }
 
-  if (normalizedKey === 'hello_world') {
+  if (normalizedKey === 'v191_telemetry_pipeline') {
+    S = createV191TelemetryPipelineState();
+  } else if (normalizedKey === 'v190_telemetry_pipeline') {
+    S = createV190TelemetryPipelineState();
+  } else if (normalizedKey === 'hello_world') {
     S = createHelloWorldWorkflowState();
   } else if (normalizedKey === 'algorithm') {
     S = createAlgorithmWorkflowState();
@@ -8151,7 +10988,7 @@ function renderWorkflowSchematicToCanvas(ctx, cw, ch) {
   ctx.strokeRect(0, 0, cw, 44);
   ctx.fillStyle = '#dbbc7f';
   ctx.font = 'bold 13px Consolas, monospace';
-  ctx.fillText(`⚡ Sandbox workflow tool v1.8.0 — ${S.title || S.workflowId || 'Workflow Schematic'}`, 14, 27);
+  ctx.fillText(`⚡ Sandbox workflow tool v1.9.1 — ${S.title || S.workflowId || 'Workflow Schematic'}`, 14, 27);
 
   const allItems = [
     ...(S.categories || []),
@@ -8269,7 +11106,7 @@ function renderWorkflowSchematicToCanvas(ctx, cw, ch) {
     ctx.restore();
   });
 
-  // 4. Draw Bus Bars (S.buses)
+  // 4. Draw Hub / Wire Organizers (S.buses)
   (S.buses || []).forEach(bus => {
     const x = tx(bus.x), y = ty(bus.y), w = ts(bus.w || 250), h = ts(bus.h || 140);
     ctx.save();
@@ -8280,7 +11117,7 @@ function renderWorkflowSchematicToCanvas(ctx, cw, ch) {
     ctx.strokeRect(x, y, w, h);
     ctx.fillStyle = '#7dd3fc';
     ctx.font = 'bold 9.5px Segoe UI, sans-serif';
-    ctx.fillText(`🚌 ${bus.title || bus.id}`, x + 6, y + 15);
+    ctx.fillText(`🔀 ${bus.title || bus.id}`, x + 6, y + 15);
     ctx.restore();
   });
 
@@ -8861,6 +11698,17 @@ function runSingleStageNodeSafe(ev, nodeId) {
   if (ev && ev.stopPropagation) ev.stopPropagation();
   const n = (S.nodes || []).find(nd => nd.id === nodeId);
   if (!n) return null;
+  const brokenIn = (S.wires || [])
+    .filter(w => w && w.toNode === nodeId && w.wireKind !== 'semantic')
+    .map(w => evaluateWireContractV190(w, S))
+    .filter(c => !c.ok);
+  if (brokenIn.length > 0) {
+    n.lastStageRunSummary = `🔴 Blocked by Upstream Red Wire (${brokenIn[0].reason})`;
+    propagateSignalToDownstreamGauges(n.id, `${n.title || n.id} halted`, 'ERR');
+    setStatus(`⏸ Halted ${n.title}: ${brokenIn[0].reason}`);
+    renderAll({ preserveInspector: true });
+    return { ok: false, blocked: true, nodeId: n.id, reason: brokenIn[0].reason, summary: n.lastStageRunSummary };
+  }
   const outBuckets = (S.wires || [])
     .filter(w => w.fromNode === nodeId)
     .map(w => (S.fileContainers || []).find(fc => fc.id === w.toNode))
@@ -8869,10 +11717,11 @@ function runSingleStageNodeSafe(ev, nodeId) {
     (fc.files || []).forEach((_, idx) => evaluateFileOverwriteGuard(fc, idx, false));
     fc.lastStepRunReport = `🟢 Verified output from ${n.title}: ${(fc.files || []).length} file(s) checked against existing disk SHA-256 (0 blind overwrites).`;
   });
+  const updatedGauges = propagateSignalToDownstreamGauges(n.id, `${n.title || n.id} safe run`, 'PASS');
   n.lastStageRunSummary = `🛡️ Safe Stage Run complete (${formatAutoSaveTime()}) — existing output files verified (0 blind overwrites).`;
-  setStatus(`▶ Ran ${n.title} with Safe Overwrite Guard`);
+  setStatus(`▶ Ran ${n.title} with Safe Overwrite Guard${updatedGauges.length ? ` · 📊 Updated ${updatedGauges.length} gauge(s)` : ''}`);
   renderAll({ preserveInspector: true });
-  return { ok: true, nodeId: n.id, summary: n.lastStageRunSummary, updatedBuckets: outBuckets.map(b => b.id) };
+  return { ok: true, nodeId: n.id, summary: n.lastStageRunSummary, updatedBuckets: outBuckets.map(b => b.id), updatedGauges };
 }
 window.runSingleStageNodeSafe = runSingleStageNodeSafe;
 
@@ -8918,16 +11767,15 @@ function updateMetricsAndJson() {
     gm.innerHTML =
       `Categories: ${S.categories.length} | Subcategories: ${S.subcategories.length}<br>` +
       `Cells: ${S.cells.length} | Nodes: ${S.nodes.length} | Sticky Notes: ${(S.stickyNotes || []).length}<br>` +
-      `Bus Bars: ${(S.buses || []).length} | File Containers: ${S.fileContainers.length} | Wires: ${S.wires.length}`;
+      `Hubs: ${(S.buses || []).length} | File Containers: ${S.fileContainers.length} | Wires: ${S.wires.length}`;
   }
   const lj = document.getElementById('liveJsonBox');
-  if (lj) lj.value = JSON.stringify(S, null, 2);
+  if (lj) lj.value = JSON.stringify(sanitizeWorkflowStateForExport(S), null, 2);
 }
 
 function exportOfflineStandaloneHtml() {
   const wfKey = getCurrentWorkflowKey() || 'example';
-  const cleanCopy = JSON.parse(JSON.stringify(S));
-  delete cleanCopy.originalBaselineSnapshot;
+  const cleanCopy = sanitizeWorkflowStateForExport(S);
   if (typeof window !== 'undefined') {
     window.WORKFLOW_PRESETS = window.WORKFLOW_PRESETS || {};
     window.WORKFLOW_PRESETS[wfKey] = cleanCopy;
@@ -8970,13 +11818,22 @@ window.exportStandaloneHtml = exportStandaloneHtml;
 
 function exportWorkflowJson() {
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const blob = new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `SandboxWorkflow_${ts}.json`;
-  a.click();
-  setStatus(`💾 Saved Workflow JSON: SandboxWorkflow_${ts}.json`);
+  const cleanCopy = sanitizeWorkflowStateForExport(S);
+  const jsonText = JSON.stringify(cleanCopy, null, 2);
+  const filename = `SandboxWorkflow_${ts}.json`;
+  try {
+    if (typeof Blob !== 'undefined' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+      const blob = new Blob([jsonText], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      if (typeof a.click === 'function') a.click();
+    }
+  } catch (e) {}
+  setStatus(`💾 Saved Workflow JSON (API keys scrubbed): ${filename}`);
+  return { filename, jsonText, state: cleanCopy };
 }
+window.exportWorkflowJson = exportWorkflowJson;
 
 function loadWorkflowJsonFile(ev) {
   const file = ev.target.files && ev.target.files[0];
@@ -8989,6 +11846,8 @@ function loadWorkflowJsonFile(ev) {
 }
 
 initUtilityNodePicker();
+initLeftDrawersPersistenceV190();
+initV19ReviewPadV190();
 restoreSavedWorkflowsIntoDropdown();
 pruneStandalonePresetDropdown();
 if (S && S.workflowId) {

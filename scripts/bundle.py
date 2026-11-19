@@ -27,9 +27,9 @@ from typing import Dict, List, Tuple
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_DIR = REPO_ROOT / "src" / "sandbox_workflow"
 DIST_DIR = REPO_ROOT / "dist"
-OUTPUT_FILENAME = "SandboxWorkflow_v1.8.1.html"
+OUTPUT_FILENAME = "SandboxWorkflow_v1.9.1.html"
 INDEX_FILENAME = "index.html"
-PAGE_TITLE = "Sandbox workflow tool — v1.8.1"
+PAGE_TITLE = "Sandbox workflow tool — v1.9.1"
 
 FORBIDDEN_SCAN_TOKENS: Tuple[str, ...] = (
     "http://",
@@ -45,6 +45,7 @@ LOCAL_PATH_PATTERNS: Tuple[Tuple[str, str, int], ...] = (
     ("UNC share path", r"\\\\[A-Za-z0-9_.-]+\\[A-Za-z0-9_.-]+", 0),
     ("Unreplaced script placeholder", r"<!--APP_SCRIPT_PLACEHOLDER-->", 0),
     ("Internal ticket token", r"\b(?:TICKET|TKT|INV|ADR)-\d+", re.IGNORECASE),
+    ("Public repo publication/internal token", r"\b(?:MIL-HDBK|MIL-STD|516D|881F|MR-114|ASD-STE100|Syntopicon|ChiefOfStaff|surface11|taila16d38|Slack)\b|\bDoD\s+RIO\b|\bRAND\b", re.IGNORECASE),
 )
 
 TOP_LEVEL_JS_FN_RE = re.compile(
@@ -175,7 +176,7 @@ def verify_manifest_if_present(dist_dir: Path) -> List[str]:
     raw = manifest_path.read_text(encoding="utf-8")
     errors = scan_security_and_leaks(raw, "dist/workflows/manifest.json", check_scan_tokens=True)
     data = json.loads(raw)
-    if data.get("version") not in ("1.8.0", "1.8.1"):
+    if data.get("version") not in ("1.8.0", "1.8.1", "1.9.1"):
         errors.append(f"dist/workflows/manifest.json: expected version '1.8.0' or '1.8.1', got {data.get('version')!r}")
     workflows = data.get("workflows")
     if not isinstance(workflows, list) or not workflows:

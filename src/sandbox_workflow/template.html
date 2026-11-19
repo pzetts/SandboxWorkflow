@@ -1,10 +1,10 @@
 <body>
 <header class="topbar">
-  <div class="brand" title="Sandbox workflow tool — v1.8.1">
+  <div class="brand" title="Sandbox workflow tool — v1.9.1">
     <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#dbbc7f" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
     <span style="font-weight:700;font-size:12.5px;white-space:nowrap;">Sandbox workflow tool</span>
-    <span class="badge" id="modeBadge" title="Offline Standalone Visual Workflow Studio">v1.8.1</span>
-    <span class="badge" id="engineVersionBadge" style="display:none;">Engine: SandboxWorkflow v1.8.1</span>
+    <span class="badge" id="modeBadge" title="Offline Standalone Visual Workflow Studio">v1.9.1</span>
+    <span class="badge" id="engineVersionBadge" style="display:none;">Engine: SandboxWorkflow v1.9.1</span>
   </div>
 
   <div class="top-controls">
@@ -18,7 +18,9 @@
       <button type="button" id="canvasSearchMatchBtn" class="tb-svg-btn" style="display:none;" onclick="cycleCanvasSearchMatch(1)" title="Jump to next canvas search match [Enter]">0/0 ▾</button>
       <button type="button" id="btnClearCanvasSearch" class="tb-svg-btn" style="display:none;padding:1px 5px;" onclick="clearCanvasSearch()" title="Clear Search [Esc]">✕</button>
       <select id="presetSelect" aria-label="Select workflow" onchange="loadPresetTemplate(this.value)" title="Select Active or Under-Construction Workflow">
-        <option value="example" selected>🧪 Example Workflow (Order &amp; Packaging Pipeline)</option>
+        <option value="v191_telemetry_pipeline" selected>🚀 v1.9.1 Deep Module Pipeline (Black-Box Containers &amp; Interactive Hub Strands)</option>
+        <option value="v190_telemetry_pipeline">🚀 v1.9.0 Real Wired Pipeline (Telemetry, Contracts, Hubs &amp; Gauges)</option>
+        <option value="example">🧪 Example Workflow (Order &amp; Packaging Pipeline)</option>
         <option value="hello_world" data-wf-status="construction">👋 Hello World (Minimal 2-Node Starter)</option>
         <option value="algorithm" data-wf-status="active">⚙️ Algorithm Pipeline (Sample Processing &amp; Validation)</option>
         <option value="blank" data-wf-status="construction">📄 Blank Workflow (Start from Scratch)</option>
@@ -97,10 +99,11 @@
         <option value="1" selected>🚶 1x</option>
         <option value="2">⚡ 2x</option>
       </select>
-      <button id="btnToggleAllLongLists" class="tb-svg-btn" onclick="toggleAllLongListsCollapse()" title="↕ Collapse / Expand All Long Lists, Rules, Sub-Steps &amp; File Containers (Auto-Fits Containers to Fit)">
+      <button id="btnToggleAllLongLists" class="tb-svg-btn" onclick="toggleAllLongListsCollapse()" title="↕ Collapse / Expand All Long Lists, Rules, What This Node Is / Does &amp; File Containers (Auto-Fits Containers to Fit)">
         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 15 5 5 5-5"></path><path d="m7 9 5-5 5 5"></path></svg>
         <span class="btn-lbl">Lists ▾</span>
       </button>
+      <button id="btnWireDetailMode" type="button" class="tb-svg-btn" onclick="cycleWireDetailModeV190()" title="🧹 Wire Detail: Clean (Quiet healthy wires, bright red error badges, 1-line script bar) — Click to cycle">🧹 Wire: Clean</button>
       <select id="wireStyleSelect" onchange="setWireStyle(this.value)" title="Select Wire Routing &amp; Pulsing Flow Style" style="max-width:98px;padding:2px 4px;font-size:10.5px;">
         <option value="schematic">📐 Schematic</option>
         <option value="schematic_pulse">⚡ Pulse Schem</option>
@@ -179,6 +182,7 @@
       <button type="button" id="btnTopbarSchematic" class="tb-svg-btn" onclick="openPrintableSchematicSvgSheet()" style="background:rgba(2,132,199,0.24);border-color:#38bdf8;color:#e0f2fe;font-weight:700;" title="📐 Schematic View — Export 1-Page White-Canvas Printable Electrical Schematic SVG">
         <svg aria-hidden="true" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"></polygon><line x1="9" y1="3" x2="9" y2="18"></line><line x1="15" y1="6" x2="15" y2="21"></line></svg>
       </button>
+      <button id="btnV19ReviewPad" type="button" class="tb-svg-btn" onclick="toggleV19ReviewPopover(event)" title="📝 v1.9 Review Feedback Pad — Score each v1.9.0 upgrade and copy Markdown review notes" style="background:rgba(219,188,127,0.18);border-color:rgba(219,188,127,0.52);color:#fef3c7;">📝 v1.9 Review</button>
       <button id="btnGithubFeedback" type="button" class="tb-svg-btn" onclick="toggleGithubFeedbackPopover(event)" title="Report a Bug or Request a Feature on GitHub (Opens clean issue form — zero workflow data attached)" aria-label="Report a Bug or Request a Feature">
         <svg aria-hidden="true" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2l1.88 1.88"></path><path d="M14.12 3.88L16 2"></path><path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1"></path><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6"></path><path d="M12 20v-9"></path><path d="M6.53 9C4.6 8.8 3 7.1 3 5"></path><path d="M6 13H2"></path><path d="M3 21c0-2.1 1.7-3.9 3.8-4"></path><path d="M20.97 5c0 2.1-1.6 3.8-3.5 4"></path><path d="M22 13h-4"></path><path d="M17.2 17c2.1.1 3.8 1.9 3.8 4"></path></svg>
         <span class="btn-lbl">Feedback</span>
@@ -196,7 +200,7 @@
 
 <div class="hotkey-help-popover" id="hotkeyHelpPopover" role="dialog" aria-label="Canvas Hotkeys & Mouse Controls">
   <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:2px;">
-    <strong style="color:var(--aqua);font-size:12px;">⌨️ Canvas Hotkeys &amp; Mouse Controls (Sandbox workflow tool v1.8.1)</strong>
+    <strong style="color:var(--aqua);font-size:12px;">⌨️ Canvas Hotkeys &amp; Mouse Controls (Sandbox workflow tool v1.9.1)</strong>
     <button class="hdr-mini-btn" onclick="toggleHotkeyHelpPopover(event, false)" title="Close Hotkeys Help [Esc]">✕</button>
   </div>
   <div class="hotkey-row"><span class="hotkey-kbd">🔍 Alt + Left-Click</span><span>Zoom In (+25% at cursor)</span></div>
@@ -225,14 +229,14 @@
   </div>
   <div>
     <label for="ghFeedbackTitle" style="display:block;font-size:10.5px;color:var(--fg1);margin-bottom:3px;">Short Summary Title</label>
-    <input type="text" id="ghFeedbackTitle" style="width:100%;" placeholder="e.g. Sequential tracer skips bus bar outputs">
+    <input type="text" id="ghFeedbackTitle" style="width:100%;" placeholder="e.g. Sequential tracer skips hub organizer outputs">
   </div>
   <div>
     <label for="ghFeedbackBody" style="display:block;font-size:10.5px;color:var(--fg1);margin-bottom:3px;">Details / Steps / Suggestion</label>
     <textarea id="ghFeedbackBody" rows="4" style="width:100%;resize:vertical;" placeholder="What happened or what would help your workflow?"></textarea>
   </div>
   <div style="font-size:10px;color:#a7f3d0;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.35);border-radius:6px;padding:5px 7px;">
-    🔒 Privacy-safe: Only the notes above and engine version (<code>v1.8.1</code>) are pre-filled. Your local workflows and file paths are never attached.
+    🔒 Privacy-safe: Only the notes above and engine version (<code>v1.9.1</code>) are pre-filled. Your local workflows and file paths are never attached.
   </div>
   <div style="display:flex;justify-content:flex-end;gap:6px;">
     <button type="button" id="btnCopyGhFeedbackMd" onclick="copyGithubFeedbackMarkdown()" style="font-size:11px;padding:5px 9px;">📋 Copy Text</button>
@@ -240,48 +244,80 @@
   </div>
 </div>
 
+<div class="v19-review-popover" id="v19ReviewPopover" role="dialog" aria-label="v1.9.0 Preview Feedback Pad">
+  <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);padding-bottom:6px;">
+    <strong style="color:var(--gold);font-size:12px;">📝 v1.9 Review Feedback Pad</strong>
+    <button type="button" class="hdr-mini-btn" onclick="toggleV19ReviewPopover(event, false)" title="Close [Esc]">✕</button>
+  </div>
+  <div id="v19ReviewItemsList" style="display:flex;flex-direction:column;gap:7px;"></div>
+  <div id="v19ReviewCopyStatus" style="font-size:10px;color:var(--aqua);min-height:14px;"></div>
+  <div style="display:flex;justify-content:flex-end;gap:6px;">
+    <button type="button" id="btnCopyV19ReviewSlack" class="btn-primary" onclick="copyV19ReviewSlackV190()" style="font-size:11px;padding:5px 10px;">📋 Copy Review Notes Markdown</button>
+  </div>
+</div>
 <div class="main-layout workspace">
   <aside class="left-palette" id="leftSidebar">
-    <div class="sec-hdr">1. Structural Containers (Black-Box I/O)</div>
-    <button class="spawn-btn" onclick="spawnCategoryContainer()"><span>📁 + Category Container</span><small>Notes + I/O</small></button>
-    <button class="spawn-btn" onclick="spawnSubcategoryContainer()"><span>📂 + Subcategory Container</span><small>Notes + I/O</small></button>
-    <button class="spawn-btn" onclick="spawnCellSlot()"><span>🧱 + Cell / Grid Slot</span><small>Notes + I/O</small></button>
+    <div class="left-drawer-toolbar">
+      <span style="font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--fg1);">Element Palette</span>
+      <button type="button" id="btnToggleAllLeftDrawers" class="hdr-mini-btn" onclick="toggleAllLeftDrawersV190()" title="Collapse or Expand All Palette Categories">Collapse All</button>
+    </div>
 
-    <div class="sec-hdr">2. Nodes, Buckets &amp; Electrical Bus Bar</div>
-    <span id="spawnEmptyNodeBtn" style="display:none;"></span>
-    <span id="btnSpawnEmptyNode" style="display:none;"></span>
-    <button id="btnSpawnIdeaNode" class="spawn-btn" onclick="addNode('empty')" title="Add a generic Empty Node to the canvas" style="border-color:rgba(245,158,11,0.5);background:rgba(245,158,11,0.12);"><span style="display:inline-flex;align-items:center;gap:5px;"><svg aria-hidden="true" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>Empty Node</span><small>Generic</small></button>
-    <button id="btnSpawnStickyNote" class="spawn-btn" onclick="addStickyNote()" title="Add a Sticky Note with freeform text, interactive To-Do checklist, pasted images &amp; node attachment" style="border-color:rgba(250,204,21,0.55);background:rgba(250,204,21,0.14);"><span>+ 📝 Sticky Note</span><small>To-Do + Paste PNG</small></button>
-    <button id="btnSpawnExternalInNode" class="spawn-btn" onclick="spawnExternalInNode()" style="border-color:rgba(56,189,248,0.45);background:rgba(56,189,248,0.1);"><span>+ 📥 Upstream Workflow</span><small>External In</small></button>
-    <button id="btnSpawnExternalOutNode" class="spawn-btn" onclick="spawnExternalOutNode()" style="border-color:rgba(16,185,129,0.45);background:rgba(16,185,129,0.1);"><span>+ 📤 Downstream Workflow</span><small>External Out</small></button>
-    <button class="spawn-btn" onclick="spawnAlgorithmNode()"><span>⚙️ + Processing / Algorithm Node</span><small>Custom</small></button>
-    <button type="button" id="btnSpawnLlmQueryNode" class="spawn-btn" onclick="addNode('llm_query')" title="Add an LLM / AI Query Node (Local Ollama, Gemini, OpenAI, Custom Endpoint)" style="border-color:rgba(168,85,247,0.55);background:rgba(168,85,247,0.14);"><span>+ 🤖 LLM / AI Query Node</span><small>Ollama / Endpoint</small></button>
-    <button class="spawn-btn" onclick="spawnFileContainer()"><span>🗄️ + File Container Block</span><small>Bucket</small></button>
-    <button class="spawn-btn" onclick="spawnBusNode()"><span>⚡ + Bus Bar</span><small>Left→Right</small></button>
-
-    <div class="sec-hdr">3. Standard Process &amp; Utility Nodes</div>
-    <details id="utilityNodesDropdown" style="background:rgba(0,0,0,0.22);border:1px solid var(--border);border-radius:6px;padding:6px;">
-      <summary style="cursor:pointer;font-size:11px;font-weight:700;color:var(--aqua);">🧰 Browse 6 Standard Utility Nodes (Click to Expand)</summary>
-      <div style="display:flex;gap:4px;margin:6px 0;">
-        <select id="utilityNodesSelect" style="flex:1;font-size:11px;"></select>
-        <button onclick="spawnSelectedUtilityNode()" style="padding:4px 8px;font-size:11px;">+ Spawn</button>
+    <details class="left-sec-drawer" data-drawer-key="sec1" open>
+      <summary class="sec-hdr left-drawer-summary">1. Structural Containers (Black-Box I/O)</summary>
+      <div class="left-drawer-body">
+        <button class="spawn-btn" onclick="spawnCategoryContainer()"><span>📁 + Category Container</span><small>Notes + I/O</small></button>
+        <button class="spawn-btn" onclick="spawnSubcategoryContainer()"><span>📂 + Subcategory Container</span><small>Notes + I/O</small></button>
+        <button class="spawn-btn" onclick="spawnCellSlot()"><span>🧱 + Cell / Grid Slot</span><small>Notes + I/O</small></button>
       </div>
-      <div class="app-grid" id="utilityNodePicker"></div>
     </details>
 
-    <div class="sec-hdr">4. 🧩 Custom User Nodes</div>
-    <div style="display:flex;flex-direction:column;gap:6px;background:rgba(0,0,0,0.22);border:1px solid var(--border);border-radius:6px;padding:7px;">
-      <button class="btn-primary" style="width:100%;font-size:11px;" onclick="toggleCustomNodeCreator()">+ New Custom Node</button>
-      <div id="customNodeCreatorBox" style="display:none;flex-direction:column;gap:5px;margin-top:4px;">
-        <input type="text" id="custNodeTitle" placeholder="Node Title (e.g. Custom Audio Filter)" style="font-size:11px;">
-        <input type="text" id="custNodeCat" placeholder="Badge (e.g. User Node)" value="Custom" style="font-size:11px;">
-        <input type="text" id="custNodeIn" placeholder="In ports (comma-sep)" value="in_data, config" style="font-size:11px;">
-        <input type="text" id="custNodeOut" placeholder="Out ports (comma-sep)" value="out_data, report" style="font-size:11px;">
-        <input type="text" id="custNodeNotes" placeholder="Notes (optional)" value="User custom node" style="font-size:11px;">
-        <button class="btn-export" style="font-size:11px;" onclick="saveCustomNodeTemplate()">💾 Save Custom Node Template</button>
+    <details class="left-sec-drawer" data-drawer-key="sec2" open>
+      <summary class="sec-hdr left-drawer-summary">2. Nodes, File Containers &amp; Sinks</summary>
+      <div class="left-drawer-body">
+        <span id="spawnEmptyNodeBtn" style="display:none;"></span>
+        <span id="btnSpawnEmptyNode" style="display:none;"></span>
+        <button id="btnSpawnIdeaNode" class="spawn-btn" onclick="addNode('empty')" title="Add a generic Empty Node to the canvas" style="border-color:rgba(245,158,11,0.5);background:rgba(245,158,11,0.12);"><span style="display:inline-flex;align-items:center;gap:5px;"><svg aria-hidden="true" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>Empty Node</span><small>Generic</small></button>
+        <button id="btnSpawnStickyNote" class="spawn-btn" onclick="addStickyNote()" title="Add a Sticky Note with freeform text, interactive To-Do checklist, pasted images &amp; node attachment" style="border-color:rgba(250,204,21,0.55);background:rgba(250,204,21,0.14);"><span>+ 📝 Sticky Note</span><small>To-Do + Paste PNG</small></button>
+        <button id="btnSpawnExternalInNode" class="spawn-btn" onclick="spawnExternalInNode()" style="border-color:rgba(56,189,248,0.45);background:rgba(56,189,248,0.1);"><span>+ 📥 Upstream Workflow</span><small>External In</small></button>
+        <button id="btnSpawnExternalOutNode" class="spawn-btn" onclick="spawnExternalOutNode()" style="border-color:rgba(16,185,129,0.45);background:rgba(16,185,129,0.1);"><span>+ 📤 Downstream Workflow</span><small>External Out</small></button>
+        <button class="spawn-btn" onclick="spawnAlgorithmNode()"><span>⚙️ + Processing / Algorithm Node</span><small>Custom</small></button>
+        <button type="button" id="btnSpawnLlmQueryNode" class="spawn-btn" onclick="addNode('llm_query')" title="Add an LLM / AI Query Node (Repo / Coding Agent, Local Ollama, .env Runner, Gemini, OpenAI, Custom Endpoint)" style="border-color:rgba(168,85,247,0.55);background:rgba(168,85,247,0.14);"><span>+ 🤖 LLM / AI Query Node</span><small>Ollama / Endpoint</small></button>
+        <button class="spawn-btn" onclick="spawnFileContainer()"><span>🗄️ + File Container Block</span><small>Bucket</small></button>
+        <button type="button" id="btnSpawnGaugeNode" class="spawn-btn" onclick="spawnGaugeNode()" title="Add a Gauge / Logger Sink Node (captures counters, pass/fail checks, event logs, or custom metric parsers)" style="border-color:rgba(6,182,212,0.55);background:rgba(6,182,212,0.14);"><span>+ 📊 Gauge / Logger Node</span><small>Tap Sink</small></button>
       </div>
-      <div id="customNodesPaletteList" style="display:flex;flex-direction:column;gap:4px;"></div>
-    </div>
+    </details>
+
+    <details class="left-sec-drawer" data-drawer-key="sec3" open>
+      <summary class="sec-hdr left-drawer-summary">3. Standard Process &amp; Utility Nodes</summary>
+      <div class="left-drawer-body">
+        <details id="utilityNodesDropdown" open style="background:rgba(0,0,0,0.22);border:1px solid var(--border);border-radius:6px;padding:6px;">
+          <summary style="cursor:pointer;font-size:11px;font-weight:700;color:var(--aqua);">🧰 Browse Utility &amp; Hub Nodes (Single-Click)</summary>
+          <div style="display:flex;flex-direction:column;gap:4px;margin:6px 0;">
+            <button type="button" id="btnSpawnHubNode" class="spawn-btn" onclick="spawnBusNode(420, 170, { hubMode: 'passthrough' })" title="Add a Pass-Through Hub (1-to-1 / 1-to-N wire organizer)" style="border-color:rgba(127,187,179,0.5);background:rgba(127,187,179,0.12);"><span>🔀 + Pass-Through Hub</span><small>1-to-1 / Fan-Out</small></button>
+            <button type="button" id="btnSpawnCombinerHubNode" class="spawn-btn" onclick="spawnBusNode(440, 220, { hubMode: 'combiner', combinerScript: 'combine_telemetry_manifest.py', inPorts: ['stream_rows', 'config_stream'], outPorts: ['combined_payload'] })" title="Add a Combiner Hub (merges multiple incoming streams via script)" style="border-color:rgba(168,85,247,0.52);background:rgba(168,85,247,0.12);"><span>📦 + Combiner Hub</span><small>Merge + Script</small></button>
+          </div>
+          <div class="app-grid" id="utilityNodePicker"></div>
+        </details>
+      </div>
+    </details>
+
+    <details class="left-sec-drawer" data-drawer-key="sec4" open>
+      <summary class="sec-hdr left-drawer-summary">4. 🧩 Custom User Nodes</summary>
+      <div class="left-drawer-body">
+        <div style="display:flex;flex-direction:column;gap:6px;background:rgba(0,0,0,0.22);border:1px solid var(--border);border-radius:6px;padding:7px;">
+          <button class="btn-primary" style="width:100%;font-size:11px;" onclick="toggleCustomNodeCreator()">+ New Custom Node</button>
+          <div id="customNodeCreatorBox" style="display:none;flex-direction:column;gap:5px;margin-top:4px;">
+            <input type="text" id="custNodeTitle" placeholder="Node Title (e.g. Custom Audio Filter)" style="font-size:11px;">
+            <input type="text" id="custNodeCat" placeholder="Badge (e.g. User Node)" value="Custom" style="font-size:11px;">
+            <input type="text" id="custNodeIn" placeholder="In ports (comma-sep)" value="in_data, config" style="font-size:11px;">
+            <input type="text" id="custNodeOut" placeholder="Out ports (comma-sep)" value="out_data, report" style="font-size:11px;">
+            <input type="text" id="custNodeNotes" placeholder="Notes (optional)" value="User custom node" style="font-size:11px;">
+            <button class="btn-export" style="font-size:11px;" onclick="saveCustomNodeTemplate()">💾 Save Custom Node Template</button>
+          </div>
+          <div id="customNodesPaletteList" style="display:flex;flex-direction:column;gap:4px;"></div>
+        </div>
+      </div>
+    </details>
 
     <div class="sec-hdr">5. Canvas Shortcuts</div>
     <div style="font-size:11px;color:var(--fg1);line-height:1.45;">
@@ -323,7 +359,7 @@
       <button class="hdr-mini-btn" onclick="deselectAll()" title="Deselect &amp; collapse inspector">✕ Hide</button>
     </div>
     <div id="inspectorContent" style="display:flex;flex-direction:column;gap:8px;font-size:12px;">
-      <div style="color:var(--fg1);">Click any Category, Subcategory, Cell, Node, Sticky Note, Bus Bar, or File Container on the canvas to edit its title, ports, notes, orientation, or script binding.</div>
+      <div style="color:var(--fg1);">Click any Category, Subcategory, Cell, Node, Gauge / Logger, Sticky Note, Hub / Wire Organizer, or File Container on the canvas to edit its title, ports, notes, orientation, or script binding.</div>
     </div>
 
     <div class="sec-hdr" style="margin-top:12px;">Live Graph Summary</div>
@@ -344,7 +380,8 @@
   <button onclick="ctxSpawn('node')">⚙️ + Processing / Algorithm Node Here</button>
   <button onclick="ctxSpawn('llm_query')">🤖 + LLM / AI Query Node Here</button>
   <button onclick="ctxSpawn('bucket')">🗄️ + File Container Block Here</button>
-  <button onclick="ctxSpawn('bus')">⚡ + Bus Bar (Left→Right) Here</button>
+  <button onclick="ctxSpawn('gauge')">📊 + Gauge / Logger Node (Tap Sink) Here</button>
+  <button onclick="ctxSpawn('bus')">🔀 + Hub / Wire Organizer Here</button>
   <button onclick="deselectAll()">⬜ Deselect All (Clean View)</button>
 </div>
 
@@ -453,6 +490,1351 @@
 </div>
 
 <script id="initial-state-script">
-window.__STANDALONE_OFFLINE_MODE__ = false;
-window.__INITIAL_SANDBOX_STATE__ = window.__INITIAL_SANDBOX_STATE__ || null;
+window.__STANDALONE_OFFLINE_MODE__ = true;
+window.__SANDBOX_PREVIEW_VERSION__ = "v1.9.1";
+window.REAL_PIPELINE_SCRIPTS = {
+  "ingest_normalize_rows.py": "\"\"\"Stage 1: Ingest and normalize raw telemetry batch records.\"\"\"\nfrom __future__ import annotations\n\nimport time\nfrom typing import Any, Dict, List\n\n\ndef run(raw_rows: List[Dict[str, Any]], batch_id: str = \"batch_v190_01\") -> Dict[str, Any]:\n    \"\"\"Normalize raw batch dictionaries into canonical telemetry rows.\"\"\"\n    t0 = time.perf_counter()\n    rows: List[Dict[str, Any]] = []\n    for idx, raw in enumerate(raw_rows or []):\n        if not isinstance(raw, dict):\n            continue\n        raw_id = raw.get(\"id\")\n        rec_id = str(raw_id).strip() if raw_id is not None else \"\"\n        category = str(raw.get(\"category\") or \"default\").strip().lower()\n        raw_score = raw.get(\"score\")\n        if raw_score is None or raw_score == \"\":\n            score = None\n        else:\n            try:\n                score = round(float(raw_score), 4)\n            except (TypeError, ValueError):\n                score = None\n        try:\n            weight = round(float(raw.get(\"weight\", 1.0)), 4)\n        except (TypeError, ValueError):\n            weight = 1.0\n        rows.append(\n            {\n                \"id\": rec_id if rec_id else None,\n                \"seq\": idx + 1,\n                \"batch_id\": str(batch_id),\n                \"category\": category,\n                \"score\": score,\n                \"weight\": weight,\n            }\n        )\n    ingest_ms = max(0.01, round((time.perf_counter() - t0) * 1000.0, 3))\n    return {\n        \"batch_id\": str(batch_id),\n        \"rows\": rows,\n        \"row_count\": len(rows),\n        \"ingest_ms\": ingest_ms,\n    }\n",
+  "combine_telemetry_manifest.py": "\"\"\"Hub 2 Combiner: Merge stream_rows with scoring_rules.json config_stream.\"\"\"\nfrom __future__ import annotations\n\nimport json\nfrom typing import Any, Dict, List, Union\n\n\ndef run(\n    stream_rows: List[Dict[str, Any]],\n    config_stream: Union[str, Dict[str, Any]],\n) -> Dict[str, Any]:\n    \"\"\"Combine normalized rows stream and scoring rules JSON manifest.\"\"\"\n    if isinstance(config_stream, str):\n        cfg = json.loads(config_stream)\n    elif isinstance(config_stream, dict):\n        cfg = dict(config_stream)\n    else:\n        raise TypeError(\"config_stream must be a JSON string or dict\")\n\n    if \"config_map\" in cfg and isinstance(cfg[\"config_map\"], dict):\n        config_map = dict(cfg[\"config_map\"])\n    else:\n        config_map = dict(cfg)\n\n    if \"min_score_threshold\" not in cfg and \"min_score_threshold\" not in config_map:\n        raise KeyError(\"Missing required 'min_score_threshold' in config_stream\")\n\n    min_score_threshold = float(\n        cfg.get(\"min_score_threshold\", config_map.get(\"min_score_threshold\"))\n    )\n    config_map.setdefault(\"min_score_threshold\", min_score_threshold)\n    rows = [dict(r) for r in (stream_rows or [])]\n    return {\n        \"rows\": rows,\n        \"config_map\": config_map,\n        \"min_score_threshold\": min_score_threshold,\n        \"row_count\": len(rows),\n    }\n",
+  "validate_and_score_records.py": "\"\"\"Stage 2: Validate and score records (aliased from rows) against config_map.\"\"\"\nfrom __future__ import annotations\n\nimport time\nfrom typing import Any, Dict, List, Optional\n\n\ndef run(\n    records: List[Dict[str, Any]],\n    config_map: Dict[str, Any],\n    min_score_threshold: Optional[float] = None,\n) -> Dict[str, Any]:\n    \"\"\"Validate required fields, compute weighted scores, and compute pass telemetry.\"\"\"\n    t0 = time.perf_counter()\n    if not isinstance(config_map, dict):\n        raise KeyError(\"Missing required 'config_map' mapping\")\n    threshold = float(\n        min_score_threshold\n        if min_score_threshold is not None\n        else config_map.get(\"min_score_threshold\", 0.7)\n    )\n    required_fields = list(config_map.get(\"required_fields\", [\"id\", \"score\"]))\n    category_weights = dict(config_map.get(\"category_weights\", {}))\n    default_weight = float(config_map.get(\"weight\", 1.0))\n\n    scored_records: List[Dict[str, Any]] = []\n    quarantined_count = 0\n    for rec in records or []:\n        item = dict(rec)\n        has_required = all(\n            item.get(field) is not None and item.get(field) != \"\"\n            for field in required_fields\n        )\n        cat = str(item.get(\"category\") or \"default\").lower()\n        cat_mult = float(category_weights.get(cat, default_weight))\n        raw_score = item.get(\"score\")\n        try:\n            numeric_score = float(raw_score) * float(item.get(\"weight\", 1.0)) * cat_mult\n            score_ok = numeric_score >= 0.0\n        except (TypeError, ValueError):\n            numeric_score = 0.0\n            score_ok = False\n        weighted_score = round(numeric_score, 4)\n        passed = bool(has_required and score_ok and weighted_score >= threshold)\n        if not passed:\n            quarantined_count += 1\n        item[\"weighted_score\"] = weighted_score\n        item[\"passed\"] = passed\n        item[\"status\"] = \"PASS\" if passed else \"QUARANTINED\"\n        scored_records.append(item)\n\n    records_scored = len(scored_records)\n    passed_count = records_scored - quarantined_count\n    pass_rate = round((passed_count / records_scored) * 100.0, 1) if records_scored else 0.0\n    elapsed_ms = max(0.01, round((time.perf_counter() - t0) * 1000.0, 3))\n    return {\n        \"scored_records\": scored_records,\n        \"pass_rate\": pass_rate,\n        \"records_scored\": records_scored,\n        \"elapsed_ms\": elapsed_ms,\n        \"quarantined_count\": quarantined_count,\n    }\n",
+  "evaluate_governance_gate.py": "\"\"\"Governance Gate: Policy validator gating Stage 2 output quality.\"\"\"\nfrom __future__ import annotations\n\nfrom typing import Any, Dict, List\n\n\ndef run(\n    pass_rate: float,\n    records_scored: int,\n    quarantined_count: int = 0,\n    min_pass_rate: float = 75.0,\n    max_quarantined: int = 2,\n) -> Dict[str, Any]:\n    \"\"\"Evaluate pass_rate and quarantined_count against schema governance thresholds.\"\"\"\n    reasons: List[str] = []\n    if int(records_scored) <= 0:\n        reasons.append(\"No records scored\")\n    if float(pass_rate) < float(min_pass_rate):\n        reasons.append(f\"pass_rate {pass_rate}% < {min_pass_rate}%\")\n    if int(quarantined_count) > int(max_quarantined):\n        reasons.append(f\"quarantined_count {quarantined_count} > {max_quarantined}\")\n    approved = len(reasons) == 0\n    return {\n        \"approved\": approved,\n        \"gate_status\": \"PASS\" if approved else \"BLOCK\",\n        \"pass_rate\": float(pass_rate),\n        \"records_scored\": int(records_scored),\n        \"quarantined_count\": int(quarantined_count),\n        \"reasons\": reasons,\n    }\n"
+};
+window.WORKFLOW_PRESETS = window.WORKFLOW_PRESETS || {};
+window.WORKFLOW_PRESETS["v190_telemetry_pipeline"] = {
+  "workflowId": "v190_telemetry_pipeline",
+  "workflowKey": "v190_telemetry_pipeline",
+  "title": "v1.9.0 Real Wired Pipeline (Telemetry, Contracts, Hubs & Gauges)",
+  "workflowName": "v1.9.0 Real Wired Pipeline (Telemetry, Contracts, Hubs & Gauges)",
+  "workflowStatus": "construction",
+  "editUnlocked": true,
+  "lockLayout": false,
+  "hideLeftPalette": false,
+  "fullScreenView": false,
+  "wireStyle": "schematic",
+  "wireDetailMode": "clean_errors",
+  "wireSelectMode": false,
+  "wireDeleteMode": false,
+  "activeBrushColor": "#38bdf8",
+  "panX": 30,
+  "panY": 30,
+  "zoom": 0.72,
+  "categories": [
+    {
+      "id": "cat_ingest_stage",
+      "title": "Stage 1 · Ingestion & Rules Source",
+      "inPorts": [
+        "batch_in"
+      ],
+      "outPorts": [
+        "rows_out",
+        "rules_out"
+      ],
+      "bottomPorts": [],
+      "notes": [
+        "Normalizes raw telemetry batch and loads scoring_rules.json"
+      ],
+      "collapsed": false,
+      "x": 40,
+      "y": 45,
+      "w": 380,
+      "h": 715
+    }
+  ],
+  "subcategories": [],
+  "cells": [],
+  "nodes": [
+    {
+      "id": "node_ingest",
+      "title": "📥 Node 1: Ingest & Normalize",
+      "endpointSlug": "ingest_normalize",
+      "type": "step",
+      "category": "Ingestion Stage",
+      "carrierType": "JSON",
+      "inPorts": [
+        "raw_rows",
+        "batch_id"
+      ],
+      "outPorts": [
+        "rows"
+      ],
+      "emittedVars": [
+        "rows",
+        "row_count",
+        "ingest_ms"
+      ],
+      "whatThisNodeDoes": [
+        "Normalizes raw telemetry batch records and computes ingest duration."
+      ],
+      "steps": [
+        "Normalizes raw telemetry batch records and computes ingest duration."
+      ],
+      "rules": [
+        "Coerce numeric scores and emit canonical rows + row_count + ingest_ms."
+      ],
+      "params": {
+        "batch_id": "batch_v190_01"
+      },
+      "notes": [
+        "Emits JSON rows stream into Hub 1 Pass-Through Router"
+      ],
+      "scriptBinding": "ingest_normalize_rows.py",
+      "scriptSubnode": {
+        "scriptName": "ingest_normalize_rows.py",
+        "scriptSource": "\"\"\"Stage 1: Ingest and normalize raw telemetry batch records.\"\"\"\nfrom __future__ import annotations\n\nimport time\nfrom typing import Any, Dict, List\n\n\ndef run(raw_rows: List[Dict[str, Any]], batch_id: str = \"batch_v190_01\") -> Dict[str, Any]:\n    \"\"\"Normalize raw batch dictionaries into canonical telemetry rows.\"\"\"\n    t0 = time.perf_counter()\n    rows: List[Dict[str, Any]] = []\n    for idx, raw in enumerate(raw_rows or []):\n        if not isinstance(raw, dict):\n            continue\n        raw_id = raw.get(\"id\")\n        rec_id = str(raw_id).strip() if raw_id is not None else \"\"\n        category = str(raw.get(\"category\") or \"default\").strip().lower()\n        raw_score = raw.get(\"score\")\n        if raw_score is None or raw_score == \"\":\n            score = None\n        else:\n            try:\n                score = round(float(raw_score), 4)\n            except (TypeError, ValueError):\n                score = None\n        try:\n            weight = round(float(raw.get(\"weight\", 1.0)), 4)\n        except (TypeError, ValueError):\n            weight = 1.0\n        rows.append(\n            {\n                \"id\": rec_id if rec_id else None,\n                \"seq\": idx + 1,\n                \"batch_id\": str(batch_id),\n                \"category\": category,\n                \"score\": score,\n                \"weight\": weight,\n            }\n        )\n    ingest_ms = max(0.01, round((time.perf_counter() - t0) * 1000.0, 3))\n    return {\n        \"batch_id\": str(batch_id),\n        \"rows\": rows,\n        \"row_count\": len(rows),\n        \"ingest_ms\": ingest_ms,\n    }\n",
+        "readsVars": [
+          "raw_rows",
+          "batch_id"
+        ],
+        "writesVars": [
+          "rows",
+          "row_count",
+          "ingest_ms"
+        ],
+        "keyAliases": {},
+        "outputMode": "script_only"
+      },
+      "x": 65,
+      "y": 115,
+      "w": 325
+    },
+    {
+      "id": "node_validate_score",
+      "title": "⚙️ Node 2: Validate & Score Pipeline",
+      "endpointSlug": "validate_and_score",
+      "type": "step",
+      "category": "Validation & Scoring",
+      "carrierType": "JSON",
+      "inPorts": [
+        "records"
+      ],
+      "outPorts": [
+        "scored_records",
+        "pass_rate",
+        "records_scored",
+        "elapsed_ms"
+      ],
+      "emittedVars": [
+        "scored_records",
+        "pass_rate",
+        "records_scored",
+        "elapsed_ms",
+        "quarantined_count"
+      ],
+      "whatThisNodeDoes": [
+        "Reads combined payload (aliasing rows -> records) and config_map.",
+        "Scores each record and exports telemetry streams to 3 live gauges."
+      ],
+      "steps": [
+        "Reads combined payload (aliasing rows -> records) and config_map.",
+        "Scores each record and exports telemetry streams to 3 live gauges."
+      ],
+      "rules": [
+        "Requires records (aliased from rows) and config_map in JSON carrier."
+      ],
+      "params": {
+        "min_score_threshold": 0.72,
+        "strict_schema": true
+      },
+      "notes": [
+        "Aliased input: rows -> records"
+      ],
+      "scriptBinding": "validate_and_score_records.py",
+      "scriptSubnode": {
+        "scriptName": "validate_and_score_records.py",
+        "scriptSource": "\"\"\"Stage 2: Validate and score records (aliased from rows) against config_map.\"\"\"\nfrom __future__ import annotations\n\nimport time\nfrom typing import Any, Dict, List, Optional\n\n\ndef run(\n    records: List[Dict[str, Any]],\n    config_map: Dict[str, Any],\n    min_score_threshold: Optional[float] = None,\n) -> Dict[str, Any]:\n    \"\"\"Validate required fields, compute weighted scores, and compute pass telemetry.\"\"\"\n    t0 = time.perf_counter()\n    if not isinstance(config_map, dict):\n        raise KeyError(\"Missing required 'config_map' mapping\")\n    threshold = float(\n        min_score_threshold\n        if min_score_threshold is not None\n        else config_map.get(\"min_score_threshold\", 0.7)\n    )\n    required_fields = list(config_map.get(\"required_fields\", [\"id\", \"score\"]))\n    category_weights = dict(config_map.get(\"category_weights\", {}))\n    default_weight = float(config_map.get(\"weight\", 1.0))\n\n    scored_records: List[Dict[str, Any]] = []\n    quarantined_count = 0\n    for rec in records or []:\n        item = dict(rec)\n        has_required = all(\n            item.get(field) is not None and item.get(field) != \"\"\n            for field in required_fields\n        )\n        cat = str(item.get(\"category\") or \"default\").lower()\n        cat_mult = float(category_weights.get(cat, default_weight))\n        raw_score = item.get(\"score\")\n        try:\n            numeric_score = float(raw_score) * float(item.get(\"weight\", 1.0)) * cat_mult\n            score_ok = numeric_score >= 0.0\n        except (TypeError, ValueError):\n            numeric_score = 0.0\n            score_ok = False\n        weighted_score = round(numeric_score, 4)\n        passed = bool(has_required and score_ok and weighted_score >= threshold)\n        if not passed:\n            quarantined_count += 1\n        item[\"weighted_score\"] = weighted_score\n        item[\"passed\"] = passed\n        item[\"status\"] = \"PASS\" if passed else \"QUARANTINED\"\n        scored_records.append(item)\n\n    records_scored = len(scored_records)\n    passed_count = records_scored - quarantined_count\n    pass_rate = round((passed_count / records_scored) * 100.0, 1) if records_scored else 0.0\n    elapsed_ms = max(0.01, round((time.perf_counter() - t0) * 1000.0, 3))\n    return {\n        \"scored_records\": scored_records,\n        \"pass_rate\": pass_rate,\n        \"records_scored\": records_scored,\n        \"elapsed_ms\": elapsed_ms,\n        \"quarantined_count\": quarantined_count,\n    }\n",
+        "readsVars": [
+          "records",
+          "config_map"
+        ],
+        "writesVars": [
+          "scored_records",
+          "pass_rate",
+          "records_scored",
+          "elapsed_ms",
+          "quarantined_count"
+        ],
+        "keyAliases": {
+          "records": "rows"
+        },
+        "outputMode": "script_only"
+      },
+      "x": 860,
+      "y": 385,
+      "w": 355
+    },
+    {
+      "id": "node_governance_gate",
+      "title": "🛡️ Schema Governance Policy",
+      "endpointSlug": "governance_gate",
+      "type": "step",
+      "category": "Governance Gate",
+      "carrierType": "JSON",
+      "inPorts": [
+        "policy_spec"
+      ],
+      "outPorts": [
+        "gate_signal"
+      ],
+      "emittedVars": [
+        "gate_status",
+        "approved"
+      ],
+      "whatThisNodeDoes": [
+        "Enforces minimum pass_rate and quarantine limits via semantic GATES edge."
+      ],
+      "steps": [
+        "Enforces minimum pass_rate and quarantine limits via semantic GATES edge."
+      ],
+      "rules": [
+        "min_pass_rate >= 75.0% and max_quarantined <= 2"
+      ],
+      "params": {
+        "min_pass_rate": 75.0,
+        "max_quarantined": 2
+      },
+      "notes": [
+        "Connected to Node 2 via dashed Semantic GATES edge"
+      ],
+      "scriptBinding": "evaluate_governance_gate.py",
+      "scriptSubnode": {
+        "scriptName": "evaluate_governance_gate.py",
+        "scriptSource": "\"\"\"Governance Gate: Policy validator gating Stage 2 output quality.\"\"\"\nfrom __future__ import annotations\n\nfrom typing import Any, Dict, List\n\n\ndef run(\n    pass_rate: float,\n    records_scored: int,\n    quarantined_count: int = 0,\n    min_pass_rate: float = 75.0,\n    max_quarantined: int = 2,\n) -> Dict[str, Any]:\n    \"\"\"Evaluate pass_rate and quarantined_count against schema governance thresholds.\"\"\"\n    reasons: List[str] = []\n    if int(records_scored) <= 0:\n        reasons.append(\"No records scored\")\n    if float(pass_rate) < float(min_pass_rate):\n        reasons.append(f\"pass_rate {pass_rate}% < {min_pass_rate}%\")\n    if int(quarantined_count) > int(max_quarantined):\n        reasons.append(f\"quarantined_count {quarantined_count} > {max_quarantined}\")\n    approved = len(reasons) == 0\n    return {\n        \"approved\": approved,\n        \"gate_status\": \"PASS\" if approved else \"BLOCK\",\n        \"pass_rate\": float(pass_rate),\n        \"records_scored\": int(records_scored),\n        \"quarantined_count\": int(quarantined_count),\n        \"reasons\": reasons,\n    }\n",
+        "readsVars": [],
+        "writesVars": [
+          "gate_status",
+          "approved"
+        ],
+        "keyAliases": {},
+        "outputMode": "script_only"
+      },
+      "x": 860,
+      "y": 815,
+      "w": 355
+    },
+    {
+      "id": "gauge_pass_rate",
+      "title": "🎯 Pass Rate Dial",
+      "endpointSlug": "pass_rate_dial",
+      "type": "gauge",
+      "category": "📊 GAUGE / LOGGER",
+      "carrierType": "JSON",
+      "inPorts": [
+        "tap_in"
+      ],
+      "outPorts": [],
+      "gaugeMode": "pass_fail",
+      "gaugeStyle": "dial",
+      "tapVariable": "pass_rate",
+      "gaugeUnit": "%",
+      "gaugeMin": 0,
+      "gaugeMax": 100,
+      "gaugeDecimals": 1,
+      "gaugeThreshold": 80,
+      "gaugeSeries": [
+        88.5,
+        91.0,
+        92.4,
+        94.2,
+        95.0
+      ],
+      "gaugeCount": 5,
+      "gaugeStatus": "PASS",
+      "gaugeLogs": [
+        "[boot] pass_rate=95.0% (PASS)"
+      ],
+      "whatThisNodeDoes": [
+        "Taps Node 2 pass_rate stream as a radial threshold dial."
+      ],
+      "steps": [
+        "Taps Node 2 pass_rate stream as a radial threshold dial."
+      ],
+      "params": {
+        "sink_mode": "dial",
+        "tap_variable": "pass_rate"
+      },
+      "notes": [
+        "Halts cleanly if any upstream data wire turns red."
+      ],
+      "scriptBinding": "",
+      "x": 1310,
+      "y": 55,
+      "w": 300
+    },
+    {
+      "id": "gauge_records_scored",
+      "title": "🔢 Records Scored KPI",
+      "endpointSlug": "records_scored_kpi",
+      "type": "gauge",
+      "category": "📊 GAUGE / LOGGER",
+      "carrierType": "JSON",
+      "inPorts": [
+        "tap_in"
+      ],
+      "outPorts": [],
+      "gaugeMode": "run_counter",
+      "gaugeStyle": "digital",
+      "tapVariable": "records_scored",
+      "gaugeUnit": "rows",
+      "gaugeMin": 0,
+      "gaugeMax": 2000,
+      "gaugeDecimals": 0,
+      "gaugeThreshold": 100,
+      "gaugeSeries": [
+        120,
+        245,
+        380,
+        512,
+        640
+      ],
+      "gaugeCount": 5,
+      "gaugeStatus": "ACTIVE",
+      "gaugeLogs": [
+        "[boot] records_scored=640 rows (ACTIVE)"
+      ],
+      "whatThisNodeDoes": [
+        "Taps Node 2 records_scored stream as a KPI digital readout."
+      ],
+      "steps": [
+        "Taps Node 2 records_scored stream as a KPI digital readout."
+      ],
+      "params": {
+        "sink_mode": "digital",
+        "tap_variable": "records_scored"
+      },
+      "notes": [
+        "Displays latest value, delta vs previous tick, min/avg/peak."
+      ],
+      "scriptBinding": "",
+      "x": 1310,
+      "y": 395,
+      "w": 300
+    },
+    {
+      "id": "gauge_latency_trend",
+      "title": "📈 Latency Trend Sparkline",
+      "endpointSlug": "latency_sparkline",
+      "type": "gauge",
+      "category": "📊 GAUGE / LOGGER",
+      "carrierType": "JSON",
+      "inPorts": [
+        "tap_in"
+      ],
+      "outPorts": [],
+      "gaugeMode": "event_log",
+      "gaugeStyle": "timeseries",
+      "tapVariable": "elapsed_ms",
+      "gaugeUnit": "ms",
+      "gaugeMin": 0,
+      "gaugeMax": 100,
+      "gaugeDecimals": 1,
+      "gaugeThreshold": 60,
+      "gaugeSeries": [
+        42.1,
+        38.4,
+        35.0,
+        31.8,
+        29.4
+      ],
+      "gaugeCount": 5,
+      "gaugeStatus": "ACTIVE",
+      "gaugeLogs": [
+        "[boot] elapsed_ms=29.4 ms (ACTIVE)"
+      ],
+      "whatThisNodeDoes": [
+        "Taps Node 2 elapsed_ms stream as a live timeseries sparkline."
+      ],
+      "steps": [
+        "Taps Node 2 elapsed_ms stream as a live timeseries sparkline."
+      ],
+      "params": {
+        "sink_mode": "timeseries",
+        "tap_variable": "elapsed_ms"
+      },
+      "notes": [
+        "Tracks scoring execution latency across ticks."
+      ],
+      "scriptBinding": "",
+      "x": 1310,
+      "y": 720,
+      "w": 300
+    }
+  ],
+  "fileContainers": [
+    {
+      "id": "fc_scoring_rules",
+      "title": "Scoring Rules Manifest",
+      "endpointSlug": "scoring_rules",
+      "carrierType": "JSON",
+      "emittedVars": [
+        "config_map",
+        "min_score_threshold"
+      ],
+      "pattern": "*.json",
+      "inPorts": [
+        "rules_in"
+      ],
+      "outPorts": [
+        "config_stream"
+      ],
+      "files": [
+        "scoring_rules.json"
+      ],
+      "x": 65,
+      "y": 495,
+      "w": 325
+    },
+    {
+      "id": "fc_raw_archive",
+      "title": "Raw Audit Archive",
+      "endpointSlug": "raw_archive",
+      "carrierType": "JSON",
+      "acceptedCarriers": [
+        "JSON",
+        "Files[]"
+      ],
+      "readsVars": [
+        "rows"
+      ],
+      "emittedVars": [
+        "rows"
+      ],
+      "pattern": "*.json, *.jsonl",
+      "inPorts": [
+        "in_files"
+      ],
+      "outPorts": [
+        "archived_out"
+      ],
+      "files": [
+        "raw_ingest_audit.jsonl",
+        "batch_manifest.json"
+      ],
+      "x": 860,
+      "y": 55,
+      "w": 320
+    }
+  ],
+  "buses": [
+    {
+      "id": "bus_fanout",
+      "title": "🔀 Hub 1: Pass-Through Fan-Out Router",
+      "endpointSlug": "fanout_hub",
+      "orientation": "left-right",
+      "hubMode": "passthrough",
+      "combinerScript": "",
+      "carrierType": "JSON",
+      "inPorts": [
+        "stream_in"
+      ],
+      "outPorts": [
+        "out_1",
+        "out_2"
+      ],
+      "bottomPorts": [],
+      "notes": [
+        "1-to-2 Pass-Through Fan-Out: forks normalized rows to Combiner Hub & Raw Audit Archive."
+      ],
+      "x": 475,
+      "y": 90,
+      "w": 295,
+      "h": 225
+    },
+    {
+      "id": "bus_combiner",
+      "title": "📦 Hub 2: Telemetry Manifest Combiner",
+      "endpointSlug": "combine_hub",
+      "orientation": "left-right",
+      "hubMode": "combiner",
+      "combinerScript": "combine_telemetry_manifest.py",
+      "scriptSource": "\"\"\"Hub 2 Combiner: Merge stream_rows with scoring_rules.json config_stream.\"\"\"\nfrom __future__ import annotations\n\nimport json\nfrom typing import Any, Dict, List, Union\n\n\ndef run(\n    stream_rows: List[Dict[str, Any]],\n    config_stream: Union[str, Dict[str, Any]],\n) -> Dict[str, Any]:\n    \"\"\"Combine normalized rows stream and scoring rules JSON manifest.\"\"\"\n    if isinstance(config_stream, str):\n        cfg = json.loads(config_stream)\n    elif isinstance(config_stream, dict):\n        cfg = dict(config_stream)\n    else:\n        raise TypeError(\"config_stream must be a JSON string or dict\")\n\n    if \"config_map\" in cfg and isinstance(cfg[\"config_map\"], dict):\n        config_map = dict(cfg[\"config_map\"])\n    else:\n        config_map = dict(cfg)\n\n    if \"min_score_threshold\" not in cfg and \"min_score_threshold\" not in config_map:\n        raise KeyError(\"Missing required 'min_score_threshold' in config_stream\")\n\n    min_score_threshold = float(\n        cfg.get(\"min_score_threshold\", config_map.get(\"min_score_threshold\"))\n    )\n    config_map.setdefault(\"min_score_threshold\", min_score_threshold)\n    rows = [dict(r) for r in (stream_rows or [])]\n    return {\n        \"rows\": rows,\n        \"config_map\": config_map,\n        \"min_score_threshold\": min_score_threshold,\n        \"row_count\": len(rows),\n    }\n",
+      "carrierType": "JSON",
+      "readsVars": [
+        "rows",
+        "config_map"
+      ],
+      "portReadsVars": {
+        "stream_rows": [
+          "rows"
+        ],
+        "config_stream": [
+          "config_map"
+        ]
+      },
+      "emittedVars": [
+        "rows",
+        "config_map",
+        "min_score_threshold",
+        "row_count"
+      ],
+      "inPorts": [
+        "stream_rows",
+        "config_stream"
+      ],
+      "outPorts": [
+        "combined_payload"
+      ],
+      "bottomPorts": [],
+      "notes": [
+        "Combines stream_rows + scoring_rules.json config_stream via combine_telemetry_manifest.py."
+      ],
+      "x": 475,
+      "y": 410,
+      "w": 305,
+      "h": 245
+    }
+  ],
+  "stickyNotes": [],
+  "wires": [
+    {
+      "id": "w_v190_ingest_to_hub1",
+      "wireKind": "data",
+      "fromNode": "node_ingest",
+      "fromPort": "rows",
+      "toNode": "bus_fanout",
+      "toPort": "stream_in"
+    },
+    {
+      "id": "w_v190_hub1_to_hub2",
+      "wireKind": "data",
+      "fromNode": "bus_fanout",
+      "fromPort": "out_1",
+      "toNode": "bus_combiner",
+      "toPort": "stream_rows"
+    },
+    {
+      "id": "w_v190_hub1_to_archive",
+      "wireKind": "data",
+      "fromNode": "bus_fanout",
+      "fromPort": "out_2",
+      "toNode": "fc_raw_archive",
+      "toPort": "in_files"
+    },
+    {
+      "id": "w_v190_rules_to_hub2",
+      "wireKind": "data",
+      "fromNode": "fc_scoring_rules",
+      "fromPort": "config_stream",
+      "toNode": "bus_combiner",
+      "toPort": "config_stream"
+    },
+    {
+      "id": "w_v190_hub2_to_node2",
+      "wireKind": "data",
+      "fromNode": "bus_combiner",
+      "fromPort": "combined_payload",
+      "toNode": "node_validate_score",
+      "toPort": "records"
+    },
+    {
+      "id": "w_v190_gate_to_node2",
+      "wireKind": "semantic",
+      "relationshipVerb": "GATES",
+      "label": "GATES",
+      "fromNode": "node_governance_gate",
+      "fromPort": "gate_signal",
+      "toNode": "node_validate_score",
+      "toPort": "records"
+    },
+    {
+      "id": "w_v190_node2_to_gauge_dial",
+      "wireKind": "data",
+      "fromNode": "node_validate_score",
+      "fromPort": "pass_rate",
+      "toNode": "gauge_pass_rate",
+      "toPort": "tap_in"
+    },
+    {
+      "id": "w_v190_node2_to_gauge_kpi",
+      "wireKind": "data",
+      "fromNode": "node_validate_score",
+      "fromPort": "records_scored",
+      "toNode": "gauge_records_scored",
+      "toPort": "tap_in"
+    },
+    {
+      "id": "w_v190_node2_to_gauge_ts",
+      "wireKind": "data",
+      "fromNode": "node_validate_score",
+      "fromPort": "elapsed_ms",
+      "toNode": "gauge_latency_trend",
+      "toPort": "tap_in"
+    }
+  ],
+  "notes": "Option B wired telemetry pipeline with real Python scripts, contracts, hubs, semantic gate, and gauges."
+};
+window.WORKFLOW_PRESETS["v191_telemetry_pipeline"] = {
+  "workflowId": "v191_telemetry_pipeline",
+  "workflowKey": "v191_telemetry_pipeline",
+  "title": "v1.9.1 Deep Module Pipeline (Black-Box Containers & Interactive Hub Strands)",
+  "workflowName": "v1.9.1 Deep Module Pipeline (Black-Box Containers & Interactive Hub Strands)",
+  "workflowStatus": "construction",
+  "editUnlocked": true,
+  "lockLayout": false,
+  "hideLeftPalette": false,
+  "fullScreenView": false,
+  "wireStyle": "schematic",
+  "wireDetailMode": "clean_errors",
+  "wireSelectMode": false,
+  "wireDeleteMode": false,
+  "activeBrushColor": "#38bdf8",
+  "panX": 25,
+  "panY": 20,
+  "zoom": 0.56,
+  "categories": [
+    {
+      "id": "cat_ingest",
+      "title": "1. Raw Ingestion & Normalization — Deep Module",
+      "inPorts": [
+        "raw_batch_in"
+      ],
+      "outPorts": [
+        "clean_rows_out",
+        "audit_archive_out"
+      ],
+      "bottomPorts": [],
+      "childNodeIds": [
+        "n_ingest",
+        "bus_fanout",
+        "fc_raw_archive"
+      ],
+      "notes": [
+        "Black-box deep module: normalizes raw telemetry batch and fans out to Scoring + Audit Archive."
+      ],
+      "collapsed": false,
+      "x": 385,
+      "y": 42,
+      "w": 680,
+      "h": 750
+    },
+    {
+      "id": "cat_scoring",
+      "title": "2. Contract-Validated Scoring & Governance — Deep Module",
+      "inPorts": [
+        "rows_stream_in",
+        "rules_stream_in"
+      ],
+      "outPorts": [
+        "scored_report_out"
+      ],
+      "bottomPorts": [
+        "telemetry_tap"
+      ],
+      "childNodeIds": [
+        "bus_combiner",
+        "n_score",
+        "n_policy"
+      ],
+      "notes": [
+        "Black-box deep module: merges rules + rows, validates contracts, emits scored report & live tap."
+      ],
+      "collapsed": false,
+      "x": 1145,
+      "y": 42,
+      "w": 735,
+      "h": 842
+    }
+  ],
+  "subcategories": [],
+  "cells": [],
+  "nodes": [
+    {
+      "id": "n_ingest",
+      "parentId": "cat_ingest",
+      "title": "📥 Node 1: Ingest & Normalize",
+      "endpointSlug": "ingest_normalize",
+      "type": "step",
+      "category": "Ingestion Stage",
+      "carrierType": "JSON",
+      "inPorts": [
+        "raw_rows"
+      ],
+      "outPorts": [
+        "rows"
+      ],
+      "emittedVars": [
+        "rows",
+        "row_count",
+        "ingest_ms"
+      ],
+      "whatThisNodeDoes": [
+        "Normalizes raw telemetry batch records and computes ingest duration."
+      ],
+      "steps": [
+        "Normalizes raw telemetry batch records and computes ingest duration."
+      ],
+      "rules": [
+        "Coerce numeric scores and emit canonical rows + row_count + ingest_ms."
+      ],
+      "params": {
+        "batch_id": "batch_v191_01"
+      },
+      "notes": [
+        "Emits JSON rows stream into Hub 1 Pass-Through Router"
+      ],
+      "scriptBinding": "ingest_normalize_rows.py",
+      "scriptSubnode": {
+        "scriptName": "ingest_normalize_rows.py",
+        "scriptSource": "\"\"\"Stage 1: Ingest and normalize raw telemetry batch records.\"\"\"\nfrom __future__ import annotations\n\nimport time\nfrom typing import Any, Dict, List\n\n\ndef run(raw_rows: List[Dict[str, Any]], batch_id: str = \"batch_v190_01\") -> Dict[str, Any]:\n    \"\"\"Normalize raw batch dictionaries into canonical telemetry rows.\"\"\"\n    t0 = time.perf_counter()\n    rows: List[Dict[str, Any]] = []\n    for idx, raw in enumerate(raw_rows or []):\n        if not isinstance(raw, dict):\n            continue\n        raw_id = raw.get(\"id\")\n        rec_id = str(raw_id).strip() if raw_id is not None else \"\"\n        category = str(raw.get(\"category\") or \"default\").strip().lower()\n        raw_score = raw.get(\"score\")\n        if raw_score is None or raw_score == \"\":\n            score = None\n        else:\n            try:\n                score = round(float(raw_score), 4)\n            except (TypeError, ValueError):\n                score = None\n        try:\n            weight = round(float(raw.get(\"weight\", 1.0)), 4)\n        except (TypeError, ValueError):\n            weight = 1.0\n        rows.append(\n            {\n                \"id\": rec_id if rec_id else None,\n                \"seq\": idx + 1,\n                \"batch_id\": str(batch_id),\n                \"category\": category,\n                \"score\": score,\n                \"weight\": weight,\n            }\n        )\n    ingest_ms = max(0.01, round((time.perf_counter() - t0) * 1000.0, 3))\n    return {\n        \"batch_id\": str(batch_id),\n        \"rows\": rows,\n        \"row_count\": len(rows),\n        \"ingest_ms\": ingest_ms,\n    }\n",
+        "readsVars": [
+          "raw_rows",
+          "batch_id"
+        ],
+        "writesVars": [
+          "rows",
+          "row_count",
+          "ingest_ms"
+        ],
+        "keyAliases": {},
+        "outputMode": "script_only"
+      },
+      "x": 405,
+      "y": 240,
+      "w": 300
+    },
+    {
+      "id": "n_score",
+      "parentId": "cat_scoring",
+      "title": "⚙️ Node 2: Validate & Score Pipeline",
+      "endpointSlug": "validate_and_score",
+      "type": "step",
+      "category": "Validation & Scoring",
+      "carrierType": "JSON",
+      "inPorts": [
+        "records"
+      ],
+      "outPorts": [
+        "scored_records",
+        "pass_rate",
+        "records_scored",
+        "elapsed_ms"
+      ],
+      "emittedVars": [
+        "scored_records",
+        "pass_rate",
+        "records_scored",
+        "elapsed_ms",
+        "quarantined_count"
+      ],
+      "whatThisNodeDoes": [
+        "Reads combined payload (aliasing rows -> records) and config_map.",
+        "Scores each record and exports telemetry streams through container tap."
+      ],
+      "steps": [
+        "Reads combined payload (aliasing rows -> records) and config_map.",
+        "Scores each record and exports telemetry streams through container tap."
+      ],
+      "rules": [
+        "Requires records (aliased from rows) and config_map in JSON carrier."
+      ],
+      "params": {
+        "min_score_threshold": 0.72,
+        "strict_schema": true
+      },
+      "notes": [
+        "Aliased input: rows -> records"
+      ],
+      "scriptBinding": "validate_and_score_records.py",
+      "scriptSubnode": {
+        "scriptName": "validate_and_score_records.py",
+        "scriptSource": "\"\"\"Stage 2: Validate and score records (aliased from rows) against config_map.\"\"\"\nfrom __future__ import annotations\n\nimport time\nfrom typing import Any, Dict, List, Optional\n\n\ndef run(\n    records: List[Dict[str, Any]],\n    config_map: Dict[str, Any],\n    min_score_threshold: Optional[float] = None,\n) -> Dict[str, Any]:\n    \"\"\"Validate required fields, compute weighted scores, and compute pass telemetry.\"\"\"\n    t0 = time.perf_counter()\n    if not isinstance(config_map, dict):\n        raise KeyError(\"Missing required 'config_map' mapping\")\n    threshold = float(\n        min_score_threshold\n        if min_score_threshold is not None\n        else config_map.get(\"min_score_threshold\", 0.7)\n    )\n    required_fields = list(config_map.get(\"required_fields\", [\"id\", \"score\"]))\n    category_weights = dict(config_map.get(\"category_weights\", {}))\n    default_weight = float(config_map.get(\"weight\", 1.0))\n\n    scored_records: List[Dict[str, Any]] = []\n    quarantined_count = 0\n    for rec in records or []:\n        item = dict(rec)\n        has_required = all(\n            item.get(field) is not None and item.get(field) != \"\"\n            for field in required_fields\n        )\n        cat = str(item.get(\"category\") or \"default\").lower()\n        cat_mult = float(category_weights.get(cat, default_weight))\n        raw_score = item.get(\"score\")\n        try:\n            numeric_score = float(raw_score) * float(item.get(\"weight\", 1.0)) * cat_mult\n            score_ok = numeric_score >= 0.0\n        except (TypeError, ValueError):\n            numeric_score = 0.0\n            score_ok = False\n        weighted_score = round(numeric_score, 4)\n        passed = bool(has_required and score_ok and weighted_score >= threshold)\n        if not passed:\n            quarantined_count += 1\n        item[\"weighted_score\"] = weighted_score\n        item[\"passed\"] = passed\n        item[\"status\"] = \"PASS\" if passed else \"QUARANTINED\"\n        scored_records.append(item)\n\n    records_scored = len(scored_records)\n    passed_count = records_scored - quarantined_count\n    pass_rate = round((passed_count / records_scored) * 100.0, 1) if records_scored else 0.0\n    elapsed_ms = max(0.01, round((time.perf_counter() - t0) * 1000.0, 3))\n    return {\n        \"scored_records\": scored_records,\n        \"pass_rate\": pass_rate,\n        \"records_scored\": records_scored,\n        \"elapsed_ms\": elapsed_ms,\n        \"quarantined_count\": quarantined_count,\n    }\n",
+        "readsVars": [
+          "records",
+          "config_map"
+        ],
+        "writesVars": [
+          "scored_records",
+          "pass_rate",
+          "records_scored",
+          "elapsed_ms",
+          "quarantined_count"
+        ],
+        "keyAliases": {
+          "records": "rows"
+        },
+        "outputMode": "script_only"
+      },
+      "x": 1520,
+      "y": 240,
+      "w": 340
+    },
+    {
+      "id": "n_policy",
+      "parentId": "cat_scoring",
+      "title": "🛡️ Schema Governance Policy",
+      "endpointSlug": "governance_gate",
+      "type": "step",
+      "category": "Governance Gate",
+      "carrierType": "JSON",
+      "inPorts": [
+        "policy_spec"
+      ],
+      "outPorts": [
+        "gate_signal"
+      ],
+      "emittedVars": [
+        "gate_status",
+        "approved"
+      ],
+      "whatThisNodeDoes": [
+        "Enforces minimum pass_rate and quarantine limits via semantic GATES edge."
+      ],
+      "steps": [
+        "Enforces minimum pass_rate and quarantine limits via semantic GATES edge."
+      ],
+      "rules": [
+        "min_pass_rate >= 75.0% and max_quarantined <= 2"
+      ],
+      "params": {
+        "min_pass_rate": 75.0,
+        "max_quarantined": 2
+      },
+      "notes": [
+        "Connected to Node 2 via dashed Semantic GATES edge"
+      ],
+      "scriptBinding": "evaluate_governance_gate.py",
+      "scriptSubnode": {
+        "scriptName": "evaluate_governance_gate.py",
+        "scriptSource": "\"\"\"Governance Gate: Policy validator gating Stage 2 output quality.\"\"\"\nfrom __future__ import annotations\n\nfrom typing import Any, Dict, List\n\n\ndef run(\n    pass_rate: float,\n    records_scored: int,\n    quarantined_count: int = 0,\n    min_pass_rate: float = 75.0,\n    max_quarantined: int = 2,\n) -> Dict[str, Any]:\n    \"\"\"Evaluate pass_rate and quarantined_count against schema governance thresholds.\"\"\"\n    reasons: List[str] = []\n    if int(records_scored) <= 0:\n        reasons.append(\"No records scored\")\n    if float(pass_rate) < float(min_pass_rate):\n        reasons.append(f\"pass_rate {pass_rate}% < {min_pass_rate}%\")\n    if int(quarantined_count) > int(max_quarantined):\n        reasons.append(f\"quarantined_count {quarantined_count} > {max_quarantined}\")\n    approved = len(reasons) == 0\n    return {\n        \"approved\": approved,\n        \"gate_status\": \"PASS\" if approved else \"BLOCK\",\n        \"pass_rate\": float(pass_rate),\n        \"records_scored\": int(records_scored),\n        \"quarantined_count\": int(quarantined_count),\n        \"reasons\": reasons,\n    }\n",
+        "readsVars": [],
+        "writesVars": [
+          "gate_status",
+          "approved"
+        ],
+        "keyAliases": {},
+        "outputMode": "script_only"
+      },
+      "x": 1165,
+      "y": 540,
+      "w": 300
+    },
+    {
+      "id": "gauge_dial",
+      "title": "🎯 Pass Rate Dial",
+      "endpointSlug": "pass_rate_dial",
+      "type": "gauge",
+      "category": "📊 GAUGE / LOGGER",
+      "carrierType": "JSON",
+      "inPorts": [
+        "tap_in"
+      ],
+      "outPorts": [],
+      "gaugeMode": "pass_fail",
+      "gaugeStyle": "dial",
+      "tapVariable": "pass_rate",
+      "gaugeUnit": "%",
+      "gaugeMin": 0,
+      "gaugeMax": 100,
+      "gaugeDecimals": 1,
+      "gaugeThreshold": 80,
+      "gaugeSeries": [
+        88.5,
+        91.0,
+        92.4,
+        94.2,
+        95.0
+      ],
+      "gaugeCount": 5,
+      "gaugeStatus": "PASS",
+      "gaugeLogs": [
+        "[boot] pass_rate=95.0% (PASS)"
+      ],
+      "whatThisNodeDoes": [
+        "Taps Container 2 telemetry_tap pass_rate stream."
+      ],
+      "steps": [
+        "Taps Container 2 telemetry_tap pass_rate stream."
+      ],
+      "params": {
+        "sink_mode": "dial",
+        "tap_variable": "pass_rate"
+      },
+      "notes": [
+        "Halts cleanly if any upstream wire across containers turns red."
+      ],
+      "scriptBinding": "",
+      "x": 1145,
+      "y": 960,
+      "w": 280
+    },
+    {
+      "id": "gauge_digital",
+      "title": "🔢 Records Scored KPI",
+      "endpointSlug": "records_scored_kpi",
+      "type": "gauge",
+      "category": "📊 GAUGE / LOGGER",
+      "carrierType": "JSON",
+      "inPorts": [
+        "tap_in"
+      ],
+      "outPorts": [],
+      "gaugeMode": "run_counter",
+      "gaugeStyle": "digital",
+      "tapVariable": "records_scored",
+      "gaugeUnit": "rows",
+      "gaugeMin": 0,
+      "gaugeMax": 2000,
+      "gaugeDecimals": 0,
+      "gaugeThreshold": 100,
+      "gaugeSeries": [
+        120,
+        245,
+        380,
+        512,
+        640
+      ],
+      "gaugeCount": 5,
+      "gaugeStatus": "ACTIVE",
+      "gaugeLogs": [
+        "[boot] records_scored=640 rows (ACTIVE)"
+      ],
+      "whatThisNodeDoes": [
+        "Taps Container 2 telemetry_tap records_scored KPI."
+      ],
+      "steps": [
+        "Taps Container 2 telemetry_tap records_scored KPI."
+      ],
+      "params": {
+        "sink_mode": "digital",
+        "tap_variable": "records_scored"
+      },
+      "notes": [
+        "Displays latest value, delta vs previous tick, min/avg/peak."
+      ],
+      "scriptBinding": "",
+      "x": 1465,
+      "y": 960,
+      "w": 280
+    },
+    {
+      "id": "gauge_timeseries",
+      "title": "📈 Latency Trend Sparkline",
+      "endpointSlug": "latency_sparkline",
+      "type": "gauge",
+      "category": "📊 GAUGE / LOGGER",
+      "carrierType": "JSON",
+      "inPorts": [
+        "tap_in"
+      ],
+      "outPorts": [],
+      "gaugeMode": "event_log",
+      "gaugeStyle": "timeseries",
+      "tapVariable": "elapsed_ms",
+      "gaugeUnit": "ms",
+      "gaugeMin": 0,
+      "gaugeMax": 100,
+      "gaugeDecimals": 1,
+      "gaugeThreshold": 60,
+      "gaugeSeries": [
+        42.1,
+        38.4,
+        35.0,
+        31.8,
+        29.4
+      ],
+      "gaugeCount": 5,
+      "gaugeStatus": "ACTIVE",
+      "gaugeLogs": [
+        "[boot] elapsed_ms=29.4 ms (ACTIVE)"
+      ],
+      "whatThisNodeDoes": [
+        "Taps Container 2 telemetry_tap elapsed_ms sparkline."
+      ],
+      "steps": [
+        "Taps Container 2 telemetry_tap elapsed_ms sparkline."
+      ],
+      "params": {
+        "sink_mode": "timeseries",
+        "tap_variable": "elapsed_ms"
+      },
+      "notes": [
+        "Tracks scoring execution latency across ticks."
+      ],
+      "scriptBinding": "",
+      "x": 1785,
+      "y": 960,
+      "w": 280
+    }
+  ],
+  "fileContainers": [
+    {
+      "id": "fc_raw_drop",
+      "title": "Raw Batch Drop",
+      "endpointSlug": "raw_batch_drop",
+      "carrierType": "JSON",
+      "emittedVars": [
+        "raw_rows",
+        "batch_id"
+      ],
+      "pattern": "*.json",
+      "inPorts": [
+        "batch_in"
+      ],
+      "outPorts": [
+        "raw_batch_out"
+      ],
+      "files": [
+        "raw_telemetry_batch.json"
+      ],
+      "x": 30,
+      "y": 120,
+      "w": 280
+    },
+    {
+      "id": "fc_rules_in",
+      "title": "Scoring Rules Config",
+      "endpointSlug": "scoring_rules",
+      "carrierType": "JSON",
+      "emittedVars": [
+        "config_map",
+        "min_score_threshold"
+      ],
+      "pattern": "*.json",
+      "inPorts": [
+        "rules_in"
+      ],
+      "outPorts": [
+        "config_stream"
+      ],
+      "files": [
+        "scoring_rules.json"
+      ],
+      "x": 30,
+      "y": 450,
+      "w": 280
+    },
+    {
+      "id": "fc_raw_archive",
+      "parentId": "cat_ingest",
+      "title": "Raw Audit Archive",
+      "endpointSlug": "raw_archive",
+      "carrierType": "JSON",
+      "acceptedCarriers": [
+        "JSON",
+        "Files[]"
+      ],
+      "readsVars": [
+        "rows"
+      ],
+      "emittedVars": [
+        "rows"
+      ],
+      "pattern": "*.json, *.jsonl",
+      "inPorts": [
+        "in_files"
+      ],
+      "outPorts": [
+        "archived_out"
+      ],
+      "files": [
+        "raw_ingest_audit.jsonl",
+        "batch_manifest.json"
+      ],
+      "x": 760,
+      "y": 520,
+      "w": 285
+    },
+    {
+      "id": "fc_scored_out",
+      "title": "Scored Telemetry Output",
+      "endpointSlug": "scored_output",
+      "carrierType": "JSON",
+      "readsVars": [
+        "scored_records"
+      ],
+      "emittedVars": [
+        "scored_records"
+      ],
+      "pattern": "*.json",
+      "inPorts": [
+        "reports_in"
+      ],
+      "outPorts": [
+        "published_out"
+      ],
+      "files": [
+        "scored_telemetry_report.json"
+      ],
+      "x": 1960,
+      "y": 140,
+      "w": 290
+    }
+  ],
+  "buses": [
+    {
+      "id": "bus_fanout",
+      "parentId": "cat_ingest",
+      "title": "🔀 Hub 1: Pass-Through Fan-Out Router",
+      "endpointSlug": "fanout_hub",
+      "orientation": "left-right",
+      "hubMode": "passthrough",
+      "combinerScript": "",
+      "carrierType": "JSON",
+      "inPorts": [
+        "stream_in"
+      ],
+      "outPorts": [
+        "out_1",
+        "out_2"
+      ],
+      "bottomPorts": [],
+      "hubInternalWires": [
+        {
+          "id": "hw_fan_1",
+          "fromKind": "in",
+          "fromIdx": 0,
+          "toKind": "out",
+          "toIdx": 0
+        },
+        {
+          "id": "hw_fan_2",
+          "fromKind": "in",
+          "fromIdx": 0,
+          "toKind": "out",
+          "toIdx": 1
+        }
+      ],
+      "notes": [
+        "1-to-2 Pass-Through Fan-Out inside Ingestion Deep Module."
+      ],
+      "x": 760,
+      "y": 240,
+      "w": 285,
+      "h": 225
+    },
+    {
+      "id": "bus_combiner",
+      "parentId": "cat_scoring",
+      "title": "📦 Hub 2: Telemetry Manifest Combiner",
+      "endpointSlug": "combine_hub",
+      "orientation": "left-right",
+      "hubMode": "combiner",
+      "combinerScript": "combine_telemetry_manifest.py",
+      "scriptSource": "\"\"\"Hub 2 Combiner: Merge stream_rows with scoring_rules.json config_stream.\"\"\"\nfrom __future__ import annotations\n\nimport json\nfrom typing import Any, Dict, List, Union\n\n\ndef run(\n    stream_rows: List[Dict[str, Any]],\n    config_stream: Union[str, Dict[str, Any]],\n) -> Dict[str, Any]:\n    \"\"\"Combine normalized rows stream and scoring rules JSON manifest.\"\"\"\n    if isinstance(config_stream, str):\n        cfg = json.loads(config_stream)\n    elif isinstance(config_stream, dict):\n        cfg = dict(config_stream)\n    else:\n        raise TypeError(\"config_stream must be a JSON string or dict\")\n\n    if \"config_map\" in cfg and isinstance(cfg[\"config_map\"], dict):\n        config_map = dict(cfg[\"config_map\"])\n    else:\n        config_map = dict(cfg)\n\n    if \"min_score_threshold\" not in cfg and \"min_score_threshold\" not in config_map:\n        raise KeyError(\"Missing required 'min_score_threshold' in config_stream\")\n\n    min_score_threshold = float(\n        cfg.get(\"min_score_threshold\", config_map.get(\"min_score_threshold\"))\n    )\n    config_map.setdefault(\"min_score_threshold\", min_score_threshold)\n    rows = [dict(r) for r in (stream_rows or [])]\n    return {\n        \"rows\": rows,\n        \"config_map\": config_map,\n        \"min_score_threshold\": min_score_threshold,\n        \"row_count\": len(rows),\n    }\n",
+      "carrierType": "JSON",
+      "readsVars": [
+        "rows",
+        "config_map"
+      ],
+      "portReadsVars": {
+        "stream_rows": [
+          "rows"
+        ],
+        "config_stream": [
+          "config_map"
+        ]
+      },
+      "emittedVars": [
+        "rows",
+        "config_map",
+        "min_score_threshold",
+        "row_count"
+      ],
+      "inPorts": [
+        "stream_rows",
+        "config_stream"
+      ],
+      "outPorts": [
+        "combined_payload"
+      ],
+      "bottomPorts": [],
+      "hubInternalWires": [
+        {
+          "id": "hw_comb_1",
+          "fromKind": "in",
+          "fromIdx": 0,
+          "toKind": "script_in",
+          "toIdx": 0
+        },
+        {
+          "id": "hw_comb_2",
+          "fromKind": "in",
+          "fromIdx": 1,
+          "toKind": "script_in",
+          "toIdx": 1
+        },
+        {
+          "id": "hw_comb_3",
+          "fromKind": "script_out",
+          "fromIdx": 0,
+          "toKind": "out",
+          "toIdx": 0
+        }
+      ],
+      "notes": [
+        "Combines stream_rows + rules_stream_in via combine_telemetry_manifest.py inside Scoring Deep Module."
+      ],
+      "x": 1165,
+      "y": 240,
+      "w": 300,
+      "h": 240
+    }
+  ],
+  "stickyNotes": [],
+  "wires": [
+    {
+      "id": "w_v191_drop_to_ingest",
+      "wireKind": "data",
+      "fromNode": "fc_raw_drop",
+      "fromPort": "raw_batch_out",
+      "toNode": "cat_ingest",
+      "toPort": "raw_batch_in"
+    },
+    {
+      "id": "w_v191_cat_in_to_node1",
+      "wireKind": "data",
+      "fromNode": "cat_ingest",
+      "fromPort": "raw_batch_in",
+      "fromDir": "in",
+      "toNode": "n_ingest",
+      "toPort": "raw_rows",
+      "toDir": "in"
+    },
+    {
+      "id": "w_v191_node1_to_hub1",
+      "wireKind": "data",
+      "fromNode": "n_ingest",
+      "fromPort": "rows",
+      "toNode": "bus_fanout",
+      "toPort": "stream_in"
+    },
+    {
+      "id": "w_v191_hub1_to_cat_out",
+      "wireKind": "data",
+      "fromNode": "bus_fanout",
+      "fromPort": "out_1",
+      "toNode": "cat_ingest",
+      "toPort": "clean_rows_out",
+      "toDir": "out"
+    },
+    {
+      "id": "w_v191_hub1_to_archive",
+      "wireKind": "data",
+      "fromNode": "bus_fanout",
+      "fromPort": "out_2",
+      "toNode": "fc_raw_archive",
+      "toPort": "in_files"
+    },
+    {
+      "id": "w_v191_archive_to_cat_out",
+      "wireKind": "data",
+      "fromNode": "fc_raw_archive",
+      "fromPort": "archived_out",
+      "toNode": "cat_ingest",
+      "toPort": "audit_archive_out",
+      "toDir": "out"
+    },
+    {
+      "id": "w_v191_ingest_to_scoring",
+      "wireKind": "data",
+      "fromNode": "cat_ingest",
+      "fromPort": "clean_rows_out",
+      "toNode": "cat_scoring",
+      "toPort": "rows_stream_in"
+    },
+    {
+      "id": "w_v191_rules_to_scoring",
+      "wireKind": "data",
+      "fromNode": "fc_rules_in",
+      "fromPort": "config_stream",
+      "toNode": "cat_scoring",
+      "toPort": "rules_stream_in"
+    },
+    {
+      "id": "w_v191_cat_rows_to_hub2",
+      "wireKind": "data",
+      "fromNode": "cat_scoring",
+      "fromPort": "rows_stream_in",
+      "fromDir": "in",
+      "toNode": "bus_combiner",
+      "toPort": "stream_rows",
+      "toDir": "in"
+    },
+    {
+      "id": "w_v191_cat_rules_to_hub2",
+      "wireKind": "data",
+      "fromNode": "cat_scoring",
+      "fromPort": "rules_stream_in",
+      "fromDir": "in",
+      "toNode": "bus_combiner",
+      "toPort": "config_stream",
+      "toDir": "in"
+    },
+    {
+      "id": "w_v191_hub2_to_node2",
+      "wireKind": "data",
+      "fromNode": "bus_combiner",
+      "fromPort": "combined_payload",
+      "toNode": "n_score",
+      "toPort": "records"
+    },
+    {
+      "id": "w_v191_gate_to_node2",
+      "wireKind": "semantic",
+      "relationshipVerb": "GATES",
+      "label": "GATES",
+      "fromNode": "n_policy",
+      "fromPort": "gate_signal",
+      "toNode": "n_score",
+      "toPort": "records"
+    },
+    {
+      "id": "w_v191_node2_to_cat_out",
+      "wireKind": "data",
+      "fromNode": "n_score",
+      "fromPort": "scored_records",
+      "toNode": "cat_scoring",
+      "toPort": "scored_report_out",
+      "toDir": "out"
+    },
+    {
+      "id": "w_v191_node2_to_cat_tap",
+      "wireKind": "data",
+      "fromNode": "n_score",
+      "fromPort": "pass_rate",
+      "toNode": "cat_scoring",
+      "toPort": "telemetry_tap",
+      "toDir": "bottom"
+    },
+    {
+      "id": "w_v191_scoring_to_out",
+      "wireKind": "data",
+      "fromNode": "cat_scoring",
+      "fromPort": "scored_report_out",
+      "toNode": "fc_scored_out",
+      "toPort": "reports_in"
+    },
+    {
+      "id": "w_v191_tap_to_dial",
+      "wireKind": "data",
+      "fromNode": "cat_scoring",
+      "fromPort": "telemetry_tap",
+      "fromDir": "bottom",
+      "toNode": "gauge_dial",
+      "toPort": "tap_in"
+    },
+    {
+      "id": "w_v191_tap_to_kpi",
+      "wireKind": "data",
+      "fromNode": "cat_scoring",
+      "fromPort": "telemetry_tap",
+      "fromDir": "bottom",
+      "toNode": "gauge_digital",
+      "toPort": "tap_in"
+    },
+    {
+      "id": "w_v191_tap_to_ts",
+      "wireKind": "data",
+      "fromNode": "cat_scoring",
+      "fromPort": "telemetry_tap",
+      "fromDir": "bottom",
+      "toNode": "gauge_timeseries",
+      "toPort": "tap_in"
+    }
+  ],
+  "notes": "v1.9.1 Deep Module pipeline: zero boundary-breaching wires, interactive hub internal strands, and cross-container contract propagation."
+};
+if (window.__STANDALONE_ALLOWED_PRESETS__ && typeof window.__STANDALONE_ALLOWED_PRESETS__ === "object") {
+  window.__STANDALONE_ALLOWED_PRESETS__["v190_telemetry_pipeline"] = true;
+  window.__STANDALONE_ALLOWED_PRESETS__["v191_telemetry_pipeline"] = true;
+}
+window.__INITIAL_SANDBOX_STATE__ = window.__INITIAL_SANDBOX_STATE__ || JSON.parse(JSON.stringify(window.WORKFLOW_PRESETS["v191_telemetry_pipeline"]));
 </script>

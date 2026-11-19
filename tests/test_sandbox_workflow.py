@@ -27,7 +27,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from scripts import bundle
 
-DIST_HTML = REPO_ROOT / "dist" / "SandboxWorkflow_v1.8.1.html"
+DIST_HTML = REPO_ROOT / "dist" / "SandboxWorkflow_v1.9.1.html"
 DIST_INDEX = REPO_ROOT / "dist" / "index.html"
 MANIFEST_PATH = REPO_ROOT / "dist" / "workflows" / "manifest.json"
 EXAMPLES_DIR = REPO_ROOT / "examples"
@@ -380,7 +380,7 @@ class TestSandboxWorkflowStandalone(unittest.TestCase):
         self.assertEqual(DIST_HTML.read_text(encoding="utf-8"), html_doc)
         self.assertEqual(DIST_INDEX.read_text(encoding="utf-8"), html_doc)
 
-        self.assertIn("<title>Sandbox workflow tool — v1.8.1</title>", html_doc)
+        self.assertIn("<title>Sandbox workflow tool — v1.9.1</title>", html_doc)
         self.assertIn(">Sandbox workflow tool</span>", html_doc)
         self.assertIn('id="newBlankWorkflowBtn"', html_doc)
         self.assertIn('id="btnGithubFeedback"', html_doc)
@@ -402,7 +402,7 @@ class TestSandboxWorkflowStandalone(unittest.TestCase):
     def test_2_manifest_and_examples_valid_and_synced(self) -> None:
         self.assertTrue(MANIFEST_PATH.is_file(), f"Missing {MANIFEST_PATH}")
         manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
-        self.assertEqual(manifest.get("version"), "1.8.1")
+        self.assertEqual(manifest.get("version"), "1.9.1")
         entries = manifest.get("workflows")
         self.assertIsInstance(entries, list)
         self.assertGreaterEqual(len(entries), 2)
@@ -446,10 +446,10 @@ class TestSandboxWorkflowStandalone(unittest.TestCase):
         out = json.loads(lines[-1])
 
         # Offline boot state
-        self.assertEqual(out["bootId"], "example")
-        self.assertEqual(out["bootBadge"], "v1.8.1")
-        self.assertEqual(out["bootPresetOptions"], ["example", "hello_world", "algorithm", "blank"])
-        self.assertEqual(out["bootPresetKeys"], ["example", "hello_world", "algorithm"])
+        self.assertEqual(out["bootId"], "v191_telemetry_pipeline")
+        self.assertEqual(out["bootBadge"], "v1.9.1")
+        self.assertEqual(out["bootPresetOptions"], ["v191_telemetry_pipeline", "v190_telemetry_pipeline", "example", "hello_world", "algorithm", "blank"])
+        self.assertEqual(set(out["bootPresetKeys"]), {"v191_telemetry_pipeline", "v190_telemetry_pipeline", "example", "hello_world", "algorithm"})
         self.assertIn('class="wf-node ', out["bootDomHtml"])
 
         # + New Blank non-destructive check
@@ -525,6 +525,15 @@ class TestSandboxWorkflowStandalone(unittest.TestCase):
         self.assertIn("labels=enhancement", out["ghDraft"]["url"])
         self.assertEqual(out["offlineGuardRes"], {"ok": False, "placeholder": True, "path": "./assets/summary_report.csv"})
 
+
+
+    def test_4_public_repo_hygiene_and_v191_containers(self) -> None:
+        html_doc = DIST_HTML.read_text(encoding="utf-8")
+        self.assertIn('id="btnWireDetailMode"', html_doc)
+        self.assertIn("detectContainerBoundaryBreachesV191", html_doc)
+        self.assertEqual(bundle.scan_security_and_leaks(html_doc, "dist/SandboxWorkflow_v1.9.1.html"), [])
+        self.assertTrue(bundle.scan_security_and_leaks("sample MIL-HDBK-516D text", "probe.txt"))
+        self.assertTrue(bundle.scan_security_and_leaks("sample RAND MR-114 text", "probe.txt"))
 
 if __name__ == "__main__":
     unittest.main()
