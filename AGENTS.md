@@ -5,7 +5,7 @@ Keep this repository clean, modular, and 100% self-contained.
 ## 1. Source vs. Generated Build Artifacts
 
 1. **Edit `src/sandbox_workflow/{template.html,styles.css,app.js}` ONLY.**
-2. **NEVER hand-edit `dist/SandboxWorkflow_v1.8.0.html` or `dist/index.html`.** They are generated single-file outputs built deterministically by `scripts/bundle.py`.
+2. **NEVER hand-edit `dist/SandboxWorkflow_v1.9.1.html` or `dist/index.html`.** They are generated single-file outputs built deterministically by `scripts/bundle.py`.
 3. After any edit in `src/sandbox_workflow/`, rebuild the bundle:
    ```bash
    python scripts/bundle.py
@@ -30,7 +30,7 @@ Keep this repository clean, modular, and 100% self-contained.
 ## 3. Code Quality & Offline Security Gates
 
 - **Zero Duplicate JS Functions**: Never declare two top-level `function <name>(` definitions with the same name in `src/sandbox_workflow/app.js`.
-- **Syntax Parity**: Both `src/sandbox_workflow/app.js` and every `<script>` block in `dist/SandboxWorkflow_v1.8.0.html` must pass `node --check`.
+- **Syntax Parity**: Both `src/sandbox_workflow/app.js` and every `<script>` block in `dist/SandboxWorkflow_v1.9.1.html` must pass `node --check`.
 - **Balanced HTML Structure**: Keep exactly one `<body>`, one `</body>`, one `offline-transport-stub` script block, and balanced `<div>` elements in `src/sandbox_workflow/template.html`.
 - **Strict Offline Hygiene**: Never introduce external network URLs, `eval(`, `new Function(`, raw `base64` / `data:` inline blobs, or machine-specific local filesystem paths in `src/`, `dist/`, or `examples/`.
 - **Public Example Workflows**: Keep `examples/` and `dist/workflows/` generic, self-contained `.workflow.json` files listed cleanly in `dist/workflows/manifest.json` (`"version": "1.8.0"`).
